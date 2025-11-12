@@ -1,0 +1,104 @@
+.sortable-item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: #f8f9fa;
+  border-radius: 10px;
+  transition: all 0.3s ease;
+  cursor: default;
+  border: 1px solid #e3e8ed;
+}
+
+.sortable-item:hover {
+  border-color: #5b9bd5;
+  box-shadow: 0 3px 10px rgba(91, 155, 213, 0.15);
+  transform: translateY(-1px);
+  background: white;
+}
+
+.drag-handle {
+  cursor: grab;
+  color: #5b9bd5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.drag-handle:hover {
+  background: rgba(91, 155, 213, 0.1);
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.item-content {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 968px) {
+  .item-content {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .item-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+.item-type,
+.item-key,
+.item-value {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #5b9bd5;
+  letter-spacing: 0.5px;
+}
+
+.text {
+  font-size: 1rem;
+  color: #2c3e50;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.btn-delete {
+  padding: 0.5rem;
+  background: #fee;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+}
+
+.btn-delete:hover {
+  background: #fcc;
+  transform: scale(1.05);
+}
+
+.btn-delete:active {
+  transform: scale(0.98);
+}
+
