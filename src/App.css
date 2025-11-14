@@ -87,13 +87,11 @@
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 1rem;
-  max-width: 100%;
-  width: 100%;
+  max-width: 1800px;
   margin: 0 auto;
   flex: 1;
   overflow-y: auto;
   align-items: start;
-  padding: 0 0.5rem;
 }
 
 .first-column {
@@ -103,23 +101,15 @@
   height: fit-content;
 }
 
-@media (max-width: 1920px) {
-  .content-grid {
-    grid-template-columns: 1fr 1fr 1fr 1fr;
-    gap: 0.75rem;
-  }
-}
-
 @media (max-width: 1600px) {
   .content-grid {
-    grid-template-columns: 1fr 1fr 1fr 1fr;
-    gap: 0.5rem;
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1200px) {
   .content-grid {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -131,26 +121,24 @@
 
 .form-section,
 .tabs-section,
-.result-section,
-.inventory-section {
+.result-section {
   background: white;
   border-radius: 12px;
-  padding: 2rem;
+  padding: 1.25rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   border: 1px solid #e8ecef;
-  min-height: 600px;
   height: fit-content;
-  max-height: calc(100vh - 150px);
+  max-height: 100%;
   overflow-y: auto;
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .dark-mode .form-section,
 .dark-mode .tabs-section,
-.dark-mode .result-section,
-.dark-mode .inventory-section {
+.dark-mode .result-section {
   background: #2f3136;
   border-color: #40444b;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -277,15 +265,25 @@
 
 /* Visualização Estilo Discord */
 .discord-view {
-  background: #2f3136;
+  background: #ffffff;
   border-radius: 8px;
   padding: 1rem;
-  color: #dcddde;
+  color: #2c3e50;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   font-size: 0.9rem;
   line-height: 1.5;
   max-height: 500px;
   overflow-y: auto;
+  border: 1px solid #e3e8ed;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.dark-mode .discord-view {
+  background: #2f3136;
+  color: #dcddde;
+  border-color: #40444b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .discord-view::-webkit-scrollbar {
@@ -293,22 +291,39 @@
 }
 
 .discord-view::-webkit-scrollbar-track {
-  background: #202225;
+  background: #e3e8ed;
   border-radius: 4px;
+}
+
+.dark-mode .discord-view::-webkit-scrollbar-track {
+  background: #202225;
 }
 
 .discord-view::-webkit-scrollbar-thumb {
-  background: #1a1c1f;
+  background: #bdc3c7;
   border-radius: 4px;
 }
 
+.dark-mode .discord-view::-webkit-scrollbar-thumb {
+  background: #1a1c1f;
+}
+
 .discord-view::-webkit-scrollbar-thumb:hover {
+  background: #95a5a6;
+}
+
+.dark-mode .discord-view::-webkit-scrollbar-thumb:hover {
   background: #0d0e10;
 }
 
 .discord-empty {
   text-align: center;
   padding: 2rem 1rem;
+  color: #7f8c8d;
+  transition: color 0.3s ease;
+}
+
+.dark-mode .discord-empty {
   color: #72767d;
 }
 
@@ -327,10 +342,15 @@
 .discord-section-title {
   font-weight: 700;
   font-size: 0.95rem;
-  color: #ffffff;
+  color: #2c3e50;
   margin-bottom: 0.5rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  transition: color 0.3s ease;
+}
+
+.dark-mode .discord-section-title {
+  color: #ffffff;
 }
 
 .discord-attributes {
@@ -349,16 +369,26 @@
 }
 
 .discord-attr-name {
-  color: #dcddde;
+  color: #34495e;
   font-weight: 400;
   flex: 1;
+  transition: color 0.3s ease;
+}
+
+.dark-mode .discord-attr-name {
+  color: #dcddde;
 }
 
 .discord-attr-value {
-  color: #ffffff;
+  color: #2c3e50;
   font-weight: 600;
   font-family: 'Consolas', 'Monaco', monospace;
   margin-left: auto;
+  transition: color 0.3s ease;
+}
+
+.dark-mode .discord-attr-value {
+  color: #ffffff;
 }
 
 .tab-panel {
@@ -504,7 +534,7 @@
 .items-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
 .empty-state {
@@ -1560,37 +1590,6 @@
   color: #7f8c8d;
   text-align: center;
   font-weight: 500;
-}
-
-.btn-edit-max-life {
-  padding: 0.25rem;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: #9333ea;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-}
-
-.btn-edit-max-life:hover {
-  color: #7c3aed;
-  transform: rotate(15deg);
-}
-
-.dark-mode .btn-edit-max-life {
-  color: #a855f7;
-}
-
-.dark-mode .btn-edit-max-life:hover {
-  color: #c084fc;
-}
-
-.btn-edit-max-life svg {
-  width: 16px;
-  height: 16px;
 }
 
 .life-bar-wrapper {

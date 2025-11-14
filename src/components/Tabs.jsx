@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import './Tabs.css';
 
-export function Tabs({ tabs, children, activeTab: externalActiveTab, onTabChange }) {
-  const [internalActiveTab, setInternalActiveTab] = useState(0);
-  const activeTab = externalActiveTab !== undefined ? externalActiveTab : internalActiveTab;
-  const setActiveTab = onTabChange || setInternalActiveTab;
+export function Tabs({ tabs, children }) {
+  const [activeTab, setActiveTab] = useState(0);
 
   return (
     <div className="tabs-container">
@@ -21,7 +19,7 @@ export function Tabs({ tabs, children, activeTab: externalActiveTab, onTabChange
         ))}
       </div>
       <div className="tabs-content">
-        {Array.isArray(children) ? children[activeTab] : children}
+        {children[activeTab]}
       </div>
     </div>
   );
