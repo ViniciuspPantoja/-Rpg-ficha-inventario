@@ -15,6 +15,13 @@ import {
 } from '@dnd-kit/sortable';
 import { SortableItem } from './components/SortableItem';
 import { Tabs } from './components/Tabs';
+import { Alert } from './components/Alert';
+import medicalIcon from './assets/medical.png';
+import m4Icon from './assets/m4.png';
+import clipIcon from './assets/clip.png';
+import municaoIcon from './assets/municao.png';
+import coleteIcon from './assets/colete.png';
+import dinheiroIcon from './assets/dinheiro.png';
 import './App.css';
 
 function App() {
@@ -41,6 +48,7 @@ function App() {
   const [weaponType, setWeaponType] = useState('');
   const [ammunitionType, setAmmunitionType] = useState('');
   const [magazineCapacity, setMagazineCapacity] = useState('');
+  const [initialAmmo, setInitialAmmo] = useState(0);
   const [debito, setDebito] = useState(0);
   const [credito, setCredito] = useState(0);
   const [dinheiroEspecie, setDinheiroEspecie] = useState(0);
@@ -74,6 +82,7 @@ function App() {
   const [tempMagazineValue, setTempMagazineValue] = useState('');
   const [editingMoneyField, setEditingMoneyField] = useState(null); // Formato: `${itemId}-${moedaId}-${tipo}` (debito, credito, especie)
   const [tempMoneyValue, setTempMoneyValue] = useState('');
+  const [showItemInfo, setShowItemInfo] = useState(null); // ID do item que está mostrando informações
   const [selectedPrimaryMagazine, setSelectedPrimaryMagazine] = useState('');
   const [selectedSecondaryMagazine, setSelectedSecondaryMagazine] = useState('');
   const [activeInventoryTab, setActiveInventoryTab] = useState('cadastrar');
@@ -97,6 +106,7 @@ function App() {
   const [importedTxtFileName, setImportedTxtFileName] = useState(null); // Nome do arquivo TXT importado
   const [importedTxtContent, setImportedTxtContent] = useState(null); // Conteúdo original do TXT importado
   const [importedTxtFileHandle, setImportedTxtFileHandle] = useState(null); // Handle do arquivo para sobrescrever
+  const [alert, setAlert] = useState({ message: null, type: 'info' }); // Estado para controlar o alert
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -107,6 +117,11 @@ function App() {
 
   // URL da API do backend
   const API_URL = 'http://localhost:3001/api';
+
+  // Função helper para mostrar alerts
+  const showAlert = (message, type = 'info') => {
+    setAlert({ message, type });
+  };
 
   // Funções para salvar/carregar dados do backend
   const saveInventory = async () => {
@@ -120,13 +135,13 @@ function App() {
       });
       const data = await response.json();
       if (data.success) {
-        alert('✅ Inventário salvo com sucesso!');
+        showAlert('Inventário salvo com sucesso!', 'success');
       } else {
-        alert('⚠️ Erro ao salvar inventário');
+        showAlert('Erro ao salvar inventário', 'error');
       }
     } catch (error) {
       console.error('Erro ao salvar inventário:', error);
-      alert('⚠️ Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.');
+      showAlert('Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.', 'error');
     }
   };
 
@@ -136,11 +151,11 @@ function App() {
       const data = await response.json();
       if (data.success && data.inventory) {
         setInventory(data.inventory);
-        alert('✅ Inventário carregado com sucesso!');
+        showAlert('Inventário carregado com sucesso!', 'success');
       }
     } catch (error) {
       console.error('Erro ao carregar inventário:', error);
-      alert('⚠️ Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.');
+      showAlert('Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.', 'error');
     }
   };
 
@@ -165,13 +180,13 @@ function App() {
       });
       const data = await response.json();
       if (data.success) {
-        alert('✅ Ficha técnica salva com sucesso!');
+        showAlert('Ficha técnica salva com sucesso!', 'success');
       } else {
-        alert('⚠️ Erro ao salvar ficha técnica');
+        showAlert('Erro ao salvar ficha técnica', 'error');
       }
     } catch (error) {
       console.error('Erro ao salvar ficha técnica:', error);
-      alert('⚠️ Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.');
+      showAlert('Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.', 'error');
     }
   };
 
@@ -189,11 +204,11 @@ function App() {
         if (data.secondaryWeapon !== undefined) setSecondaryWeapon(data.secondaryWeapon);
         if (data.weaponMagazine !== undefined) setWeaponMagazine(data.weaponMagazine);
         if (data.secondaryWeaponMagazine !== undefined) setSecondaryWeaponMagazine(data.secondaryWeaponMagazine);
-        alert('✅ Ficha técnica carregada com sucesso!');
+        showAlert('Ficha técnica carregada com sucesso!', 'success');
       }
     } catch (error) {
       console.error('Erro ao carregar ficha técnica:', error);
-      alert('⚠️ Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.');
+      showAlert('Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.', 'error');
     }
   };
 
@@ -364,7 +379,7 @@ function App() {
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error('Erro ao importar TXT:', error);
-        alert('⚠️ Erro ao importar arquivo TXT.');
+        showAlert('Erro ao importar arquivo TXT.', 'warning');
       }
     }
   };
@@ -612,7 +627,7 @@ function App() {
       }
     }
 
-    alert(`✅ Importação concluída!\n- ${newItems.length} atributos\n- ${newInventory.length} itens do inventário`);
+    showAlert(`Importação concluída!\n- ${newItems.length} atributos\n- ${newInventory.length} itens do inventário`, 'success');
   };
 
   // Função para salvar em TXT com append (adiciona ao final do arquivo se existir)
@@ -620,7 +635,7 @@ function App() {
     try {
       // Verifica se o navegador suporta File System Access API
       if (!('showSaveFilePicker' in window)) {
-        alert('⚠️ Seu navegador não suporta a seleção de arquivos. Use Chrome, Edge ou outro navegador compatível.');
+        showAlert('Seu navegador não suporta a seleção de arquivos. Use Chrome, Edge ou outro navegador compatível.', 'warning');
         return;
       }
 
@@ -672,10 +687,10 @@ function App() {
       await writable.write(contentToWrite);
       await writable.close();
       
-      alert('✅ Dados salvos no arquivo TXT com sucesso!');
+      showAlert('Dados salvos no arquivo TXT com sucesso!', 'success');
     } catch (error) {
       console.error('Erro ao salvar em TXT:', error);
-      alert('⚠️ Erro ao salvar arquivo TXT. Certifique-se de que seu navegador suporta File System Access API.');
+      showAlert('Erro ao salvar arquivo TXT. Certifique-se de que seu navegador suporta File System Access API.', 'warning');
     }
   };
 
@@ -708,19 +723,19 @@ function App() {
           const txtContent = generateTxtContent();
           const saved = await saveTxtFile(txtContent, importedTxtFileName);
           if (saved) {
-            alert('✅ Todos os dados foram salvos com sucesso! O arquivo TXT foi sobrescrito.');
+            showAlert('Todos os dados foram salvos com sucesso! O arquivo TXT foi sobrescrito.', 'success');
           } else {
-            alert('✅ Todos os dados foram salvos com sucesso! (Download do TXT cancelado)');
+            showAlert('Todos os dados foram salvos com sucesso! (Download do TXT cancelado)', 'success');
           }
         } else {
-          alert('✅ Todos os dados foram salvos com sucesso!');
+          showAlert('Todos os dados foram salvos com sucesso!', 'success');
         }
       } else {
-        alert('⚠️ Erro ao salvar dados');
+        showAlert('Erro ao salvar dados', 'warning');
       }
     } catch (error) {
       console.error('Erro ao salvar dados:', error);
-      alert('⚠️ Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.');
+      showAlert('Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.', 'warning');
     }
   };
 
@@ -797,11 +812,11 @@ function App() {
           if (data.ficha.weaponMagazine !== undefined) setWeaponMagazine(data.ficha.weaponMagazine);
           if (data.ficha.secondaryWeaponMagazine !== undefined) setSecondaryWeaponMagazine(data.ficha.secondaryWeaponMagazine);
         }
-        alert('✅ Todos os dados foram carregados com sucesso!');
+        showAlert('Todos os dados foram carregados com sucesso!', 'success');
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      alert('⚠️ Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.');
+      showAlert('Erro ao conectar com o servidor. Certifique-se de que o backend está rodando.', 'warning');
     }
   };
 
@@ -925,9 +940,9 @@ function App() {
     // Adiciona todos os itens de uma vez
     if (newItems.length > 0) {
       setItems([...items, ...newItems]);
-      alert(`✅ ${newItems.length} atributos importados com sucesso!`);
+      showAlert(`${newItems.length} atributos importados com sucesso!`, 'success');
     } else {
-      alert('⚠️ Nenhum atributo encontrado no arquivo.');
+      showAlert('Nenhum atributo encontrado no arquivo.', 'warning');
     }
   };
 
@@ -940,35 +955,35 @@ function App() {
     }
     
     if (itemCategory !== 'dinheiro' && !itemName.trim()) {
-      alert(itemCategory === 'municoes' ? '⚠️ Por favor, preencha o tipo da munição.' : '⚠️ Por favor, preencha o nome do item.');
+      showAlert(itemCategory === 'municoes' ? 'Por favor, preencha o tipo da munição.' : 'Por favor, preencha o nome do item.', 'warning');
       return;
     }
 
     // Validações específicas por categoria
     if (itemCategory === 'armas' && !weaponType) {
-      alert('⚠️ Por favor, selecione o tipo de arma.');
+      showAlert('Por favor, selecione o tipo de arma.', 'warning');
       return;
     }
     if (itemCategory === 'armas' && weaponType === 'fogo' && linkedAmmunitions.length === 0) {
-      alert('⚠️ Por favor, adicione pelo menos uma munição compatível para armas de fogo.');
+      showAlert('Por favor, adicione pelo menos uma munição compatível para armas de fogo.', 'warning');
       return;
     }
     if (itemCategory === 'municoes' && !ammunitionType.trim()) {
-      alert('⚠️ Por favor, preencha o tipo de munição.');
+      showAlert('Por favor, preencha o tipo de munição.', 'warning');
       return;
     }
     if (itemCategory === 'carregadores' && !magazineCapacity.trim()) {
-      alert('⚠️ Por favor, preencha a capacidade do carregador.');
+      showAlert('Por favor, preencha a capacidade do carregador.', 'warning');
       return;
     }
     if (itemCategory === 'carregadores' && !ammunitionType.trim()) {
-      alert('⚠️ Por favor, preencha o tipo de munição que o carregador aceita.');
+      showAlert('Por favor, preencha o tipo de munição que o carregador aceita.', 'warning');
       return;
     }
     if (itemCategory === 'dinheiro') {
       const hasValue = moedas.some(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0);
       if (!hasValue) {
-        alert('⚠️ Por favor, preencha pelo menos um dos campos de dinheiro (Débito, Crédito ou Dinheiro em Espécie) em pelo menos uma moeda.');
+        showAlert('Por favor, preencha pelo menos um dos campos de dinheiro (Débito, Crédito ou Dinheiro em Espécie) em pelo menos uma moeda.', 'warning');
         return;
       }
     }
@@ -1001,10 +1016,13 @@ function App() {
       
       if (itemCategory === 'carregadores') {
         // Para carregadores, adiciona novas instâncias com IDs únicos
+        const initialAmmoValue = initialAmmo !== null && initialAmmo !== undefined ? parseInt(initialAmmo) : 0;
+        const capacity = parseInt(magazineCapacity) || 30;
+        const finalAmmo = Math.min(Math.max(0, initialAmmoValue), capacity); // Garante que não exceda a capacidade e seja >= 0
         const newInstances = Array.from({ length: itemQuantity }, (_, i) => ({
           instanceId: `${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
-          isLoaded: false,
-          currentAmmo: 0
+          isLoaded: finalAmmo === capacity,
+          currentAmmo: finalAmmo
         }));
         updatedInventory[existingItemIndex] = {
           ...existingItem,
@@ -1018,7 +1036,7 @@ function App() {
         };
       }
       setInventory(updatedInventory);
-      alert(`✅ Item atualizado! Quantidade total: ${updatedInventory[existingItemIndex].quantity}`);
+      showAlert(`Item atualizado! Quantidade total: ${updatedInventory[existingItemIndex].quantity}`, 'success');
     } else {
       // Criar novo item
       const newInventoryItem = {
@@ -1041,27 +1059,35 @@ function App() {
           linkedWeapon: linkedWeapon || null,
           loadedQuantity: 0, // Inicializa sem carregadores carregados
           // Cria instâncias individuais para cada carregador físico com IDs únicos
-          instances: Array.from({ length: itemQuantity }, (_, i) => ({
-            instanceId: `${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
-            isLoaded: false,
-            currentAmmo: 0
-          }))
+          instances: (() => {
+            const initialAmmoValue = initialAmmo !== null && initialAmmo !== undefined ? parseInt(initialAmmo) : 0;
+            const capacity = parseInt(magazineCapacity) || 30;
+            const finalAmmo = Math.min(Math.max(0, initialAmmoValue), capacity); // Garante que não exceda a capacidade e seja >= 0
+            console.log('Criando carregadores:', { initialAmmo, initialAmmoValue, capacity, finalAmmo, itemQuantity });
+            return Array.from({ length: itemQuantity }, (_, i) => ({
+              instanceId: `${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
+              isLoaded: finalAmmo === capacity,
+              currentAmmo: finalAmmo
+            }));
+          })()
         }),
         ...(itemCategory === 'dinheiro' && {
           moedas: moedas.filter(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0),
         }),
       };
       setInventory([...inventory, newInventoryItem]);
-      alert(`✅ Item cadastrado com sucesso!`);
+      showAlert(`Item cadastrado com sucesso!`, 'success');
     }
 
     // Limpar formulário
-      setItemName('');
-      setItemQuantity(1);
-      setItemCategory('geral');
+    setEditingItem(null); // Garante que o estado de edição seja limpo
+    setItemName('');
+    setItemQuantity(1);
+    setItemCategory('geral');
     setWeaponType('');
     setAmmunitionType('');
     setMagazineCapacity('');
+    setInitialAmmo(0);
     setLinkedAmmunitions([]);
     setSelectedAmmunitionToAdd('');
     setLinkedMagazine('');
@@ -1587,7 +1613,7 @@ function App() {
     const currentMagazineId = isPrimary ? currentPrimaryMagazineId : currentSecondaryMagazineId;
     
     if (!weapon || weapon.weaponType !== 'fogo') {
-      alert('⚠️ Selecione uma arma de fogo primeiro!');
+      showAlert('Selecione uma arma de fogo primeiro!', 'warning');
       return;
     }
 
@@ -1658,7 +1684,7 @@ function App() {
       : (weapon.linkedAmmunition ? [weapon.linkedAmmunition] : []);
     
     if (ammoIds.length === 0) {
-      alert('⚠️ Esta arma não possui munição vinculada! Configure a munição na arma primeiro.');
+      showAlert('Esta arma não possui munição vinculada! Configure a munição na arma primeiro.', 'warning');
       return;
     }
 
@@ -1768,16 +1794,16 @@ function App() {
           magazineCapacity = magCapacity;
           wasAutoFilled = true;
         } else {
-          alert(`⚠️ Não há munição suficiente! Precisa de ${ammoNeeded} munições para encher um carregador, mas você tem apenas ${availableAmmunition.quantity}.`);
+          showAlert(`Não há munição suficiente! Precisa de ${ammoNeeded} munições para encher um carregador, mas você tem apenas ${availableAmmunition.quantity}.`, 'warning');
           return;
         }
       } else {
         if (!availableAmmunition) {
-          alert('⚠️ Não há munição disponível no inventário para encher um carregador!');
+          showAlert('Não há munição disponível no inventário para encher um carregador!', 'warning');
         } else if (emptyMagazines.length === 0) {
-          alert('⚠️ Não há carregadores vazios disponíveis no inventário!');
+          showAlert('Não há carregadores vazios disponíveis no inventário!', 'warning');
         } else {
-          alert('⚠️ Não há carregadores carregados disponíveis e não é possível encher um carregador automaticamente!');
+          showAlert('Não há carregadores carregados disponíveis e não é possível encher um carregador automaticamente!', 'warning');
         }
         return;
       }
@@ -1855,7 +1881,7 @@ function App() {
       setPrevSecondaryMagazine({ current: magazineCapacity, max: magazineCapacity });
     }
 
-    alert(`✅ Arma recarregada! ${magazineCapacity} munições no pente.`);
+    showAlert(`Arma recarregada! ${magazineCapacity} munições no pente.`, 'success');
   };
 
   // Função para salvar o carregador atual da arma no inventário
@@ -1865,12 +1891,12 @@ function App() {
     const currentMagazineInfo = isPrimary ? currentPrimaryMagazineInfo : currentSecondaryMagazineInfo;
     
     if (!weapon || weapon.weaponType !== 'fogo') {
-      alert('⚠️ Selecione uma arma de fogo primeiro!');
+      showAlert('Selecione uma arma de fogo primeiro!', 'warning');
       return;
     }
     
     if (magazine.current <= 0) {
-      alert('⚠️ O carregador está vazio! Não há nada para salvar.');
+      showAlert('O carregador está vazio! Não há nada para salvar.', 'warning');
       return;
     }
     
@@ -1891,7 +1917,7 @@ function App() {
         // Usa o primeiro carregador compatível como base
         magazineInfo = compatibleMagazines[0];
       } else {
-        alert('⚠️ Não foi possível identificar o tipo de carregador. Cadastre um carregador compatível no inventário primeiro.');
+        showAlert('Não foi possível identificar o tipo de carregador. Cadastre um carregador compatível no inventário primeiro.', 'warning');
         return;
       }
     }
@@ -1950,13 +1976,13 @@ function App() {
       setPrevSecondaryMagazine({ current: 0, max: magazine.max });
     }
     
-    alert(`✅ Carregador salvo no inventário com ${magazine.current} munições!`);
+    showAlert(`Carregador salvo no inventário com ${magazine.current} munições!`, 'success');
   };
 
   // Função para carregar carregadores (usa munição solta para encher carregadores vazios)
   const handleLoadMagazines = (weapon) => {
     if (!weapon || weapon.weaponType !== 'fogo') {
-      alert('⚠️ Selecione uma arma de fogo primeiro!');
+      showAlert('Selecione uma arma de fogo primeiro!', 'warning');
       return;
     }
 
@@ -1966,7 +1992,7 @@ function App() {
       : (weapon.linkedAmmunition ? [weapon.linkedAmmunition] : []);
     
     if (ammoIds.length === 0) {
-      alert('⚠️ Esta arma não possui munição vinculada! Configure a munição na arma primeiro.');
+      showAlert('Esta arma não possui munição vinculada! Configure a munição na arma primeiro.', 'warning');
       return;
     }
 
@@ -2015,12 +2041,12 @@ function App() {
     });
     
     if (Object.keys(availableAmmunitionByType).length === 0) {
-      alert('⚠️ Não há munição disponível no inventário para os tipos de carregadores compatíveis!');
+      showAlert('Não há munição disponível no inventário para os tipos de carregadores compatíveis!', 'warning');
       return;
     }
     
     if (emptyMagazines.length === 0 && partialMagazines.length === 0) {
-      alert('⚠️ Não há carregadores vazios ou parciais compatíveis disponíveis no inventário!');
+      showAlert('Não há carregadores vazios ou parciais compatíveis disponíveis no inventário!', 'warning');
       return;
     }
 
@@ -2091,7 +2117,7 @@ function App() {
     });
     
     if (totalMagazinesFilled === 0) {
-      alert(`⚠️ Não há munição suficiente para preencher nenhum carregador!`);
+      showAlert(`Não há munição suficiente para preencher nenhum carregador!`, 'warning');
       return;
     }
 
@@ -2317,7 +2343,7 @@ function App() {
     setInventory(updatedInventory);
 
     const partialMessage = partialMagazinesFilled > 0 ? ` ${partialMagazinesFilled} carregador(es) parcial(is) foram removidos e preenchidos.` : '';
-    alert(`✅ ${totalMagazinesFilled} carregador(es) carregado(s) com ${totalAmmunitionUsed} munições!${partialMessage} Agora você pode recarregar sua arma.`);
+    showAlert(`${totalMagazinesFilled} carregador(es) carregado(s) com ${totalAmmunitionUsed} munições!${partialMessage} Agora você pode recarregar sua arma.`, 'success');
   };
 
   const handleEditInventoryItem = (item) => {
@@ -2339,6 +2365,7 @@ function App() {
     setWeaponType(item.weaponType || '');
     setAmmunitionType(item.ammunitionType || '');
     setMagazineCapacity(item.magazineCapacity || '');
+    setInitialAmmo(0); // Reset ao editar (não aplicável para itens já criados)
     // Compatibilidade: se linkedAmmunitions existe (array), usa; senão, converte linkedAmmunition (string) para array
     setLinkedAmmunitions(
       Array.isArray(item.linkedAmmunitions) 
@@ -2359,30 +2386,30 @@ function App() {
     e.preventDefault();
     if ((itemCategory === 'dinheiro' || itemName.trim()) && editingItem) {
       if (itemCategory === 'armas' && !weaponType) {
-        alert('⚠️ Por favor, selecione o tipo de arma.');
+        showAlert('Por favor, selecione o tipo de arma.', 'warning');
         return;
       }
       if (itemCategory === 'armas' && weaponType === 'fogo' && linkedAmmunitions.length === 0) {
-        alert('⚠️ Por favor, adicione pelo menos uma munição compatível para armas de fogo.');
+        showAlert('Por favor, adicione pelo menos uma munição compatível para armas de fogo.', 'warning');
         return;
       }
       if (itemCategory === 'municoes' && !ammunitionType.trim()) {
-        alert('⚠️ Por favor, preencha o tipo de munição.');
+        showAlert('Por favor, preencha o tipo de munição.', 'warning');
         return;
       }
       if (itemCategory === 'dinheiro') {
         const hasValue = moedas.some(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0);
         if (!hasValue) {
-          alert('⚠️ Por favor, preencha pelo menos um dos campos de dinheiro (Débito, Crédito ou Dinheiro em Espécie) em pelo menos uma moeda.');
+          showAlert('Por favor, preencha pelo menos um dos campos de dinheiro (Débito, Crédito ou Dinheiro em Espécie) em pelo menos uma moeda.', 'warning');
           return;
         }
       }
       if (itemCategory === 'carregadores' && !magazineCapacity.trim()) {
-        alert('⚠️ Por favor, preencha a capacidade do carregador.');
+        showAlert('Por favor, preencha a capacidade do carregador.', 'warning');
         return;
       }
       if (itemCategory === 'carregadores' && !ammunitionType.trim()) {
-        alert('⚠️ Por favor, preencha o tipo de munição que o carregador aceita.');
+        showAlert('Por favor, preencha o tipo de munição que o carregador aceita.', 'warning');
         return;
       }
 
@@ -2415,7 +2442,7 @@ function App() {
         item.id === editingItem.id ? updatedItem : item
       ));
       
-      alert(`✅ Item atualizado com sucesso!`);
+      showAlert(`Item atualizado com sucesso!`, 'success');
       
       // Limpar formulário e estado de edição
       setEditingItem(null);
@@ -2425,6 +2452,7 @@ function App() {
       setWeaponType('');
       setAmmunitionType('');
       setMagazineCapacity('');
+      setInitialAmmo(0);
       setLinkedAmmunitions([]);
       setSelectedAmmunitionToAdd('');
       setLinkedMagazine('');
@@ -2432,7 +2460,18 @@ function App() {
       setDebito(0);
       setCredito(0);
       setDinheiroEspecie(0);
+      setMoedas([{ id: Date.now().toString(), tipo: 'BRL', simbolo: 'R$', debito: 0, credito: 0, dinheiroEspecie: 0 }]);
     }
+  };
+
+  // Função para formatar valores monetários
+  const formatMoney = (value) => {
+    if (value === null || value === undefined || isNaN(value)) return '0,00';
+    const numValue = parseFloat(value) || 0;
+    return numValue.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
   };
 
   const handleUpdateMoneyField = (itemId, moedaId, fieldType, newValue) => {
@@ -2744,7 +2783,7 @@ function App() {
             {/* Separador entre Ficha Técnica e Status */}
             <div style={{ 
               height: '1px', 
-              background: darkMode ? '#40444b' : '#e3e8ed', 
+              background: darkMode ? '#4a4d52' : '#e3e8ed', 
               margin: '1.5rem 0',
               transition: 'background 0.3s ease'
             }}></div>
@@ -2779,15 +2818,79 @@ function App() {
                       </svg>
                     </span>
                     <div className="life-header-right">
-                      <div 
-                        className="life-values-display"
-                        onClick={() => {
-                          setTempLife('');
-                          setEditingLife(true);
-                        }}
-                      >
-                    {currentLife} / {maxLife}
-                      </div>
+                      {editingLife ? (
+                        <input
+                          type="text"
+                          className="life-operation-input"
+                          value={tempLife}
+                          onChange={(e) => setTempLife(e.target.value)}
+                          onBlur={() => {
+                            const input = tempLife.trim();
+                            
+                            if (input) {
+                              // Operação de adição (+X)
+                              if (input.startsWith('+')) {
+                                const value = parseInt(input.substring(1)) || 0;
+                                setCurrentLife(Math.max(0, Math.min(maxLife, currentLife + value)));
+                              }
+                              // Operação de subtração (-X)
+                              else if (input.startsWith('-')) {
+                                const value = parseInt(input.substring(1)) || 0;
+                                setCurrentLife(Math.max(0, Math.min(maxLife, currentLife - value)));
+                              }
+                              // Formato atual / máximo
+                              else if (input.includes('/')) {
+                                const values = input.split('/').map(v => v.trim());
+                                if (values.length === 2) {
+                                  const current = parseInt(values[0]) || 0;
+                                  const max = parseInt(values[1]) || 1;
+                                  setCurrentLife(Math.max(0, Math.min(max, current)));
+                                  setMaxLife(Math.max(1, max));
+                                }
+                              }
+                              // Valor absoluto
+                              else {
+                                const value = parseInt(input);
+                                if (!isNaN(value)) {
+                                  setCurrentLife(Math.max(0, Math.min(maxLife, value)));
+                                }
+                              }
+                            }
+                            
+                            setEditingLife(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.target.blur();
+                            } else if (e.key === 'Escape') {
+                              setEditingLife(false);
+                            }
+                          }}
+                          placeholder={currentLife.toString()}
+                          autoFocus
+                          style={{
+                            width: '100px',
+                            textAlign: 'center',
+                            fontSize: '0.9rem',
+                            padding: '0.25rem',
+                            border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                            borderRadius: '4px',
+                            background: darkMode ? '#404245' : '#fff',
+                            color: darkMode ? '#dcddde' : '#2c3e50',
+                            outline: 'none'
+                          }}
+                        />
+                      ) : (
+                        <div 
+                          className="life-values-display"
+                          onClick={() => {
+                            setTempLife('');
+                            setEditingLife(true);
+                          }}
+                        >
+                          {currentLife} / {maxLife}
+                        </div>
+                      )}
                       <button
                         className="btn-edit-max"
                         onClick={(e) => {
@@ -2801,66 +2904,6 @@ function App() {
                       </button>
                     </div>
                   </div>
-                  
-                  {editingLife && (
-                    <div className="life-edit-popup">
-                      <div className="life-current-display">
-                        <span className="current-label">ATUAL</span>
-                        <span className="current-value">{currentLife}</span>
-                      </div>
-                      <input
-                        type="text"
-                        className="life-operation-input"
-                        value={tempLife}
-                        onChange={(e) => setTempLife(e.target.value)}
-                        onBlur={() => {
-                          const input = tempLife.trim();
-                          
-                          if (input) {
-                            // Operação de adição (+X)
-                            if (input.startsWith('+')) {
-                              const value = parseInt(input.substring(1)) || 0;
-                              setCurrentLife(Math.max(0, Math.min(maxLife, currentLife + value)));
-                            }
-                            // Operação de subtração (-X)
-                            else if (input.startsWith('-')) {
-                              const value = parseInt(input.substring(1)) || 0;
-                              setCurrentLife(Math.max(0, Math.min(maxLife, currentLife - value)));
-                            }
-                            // Formato atual / máximo
-                            else if (input.includes('/')) {
-                              const values = input.split('/').map(v => v.trim());
-                              if (values.length === 2) {
-                                const current = parseInt(values[0]) || 0;
-                                const max = parseInt(values[1]) || 1;
-                                setCurrentLife(Math.max(0, Math.min(max, current)));
-                                setMaxLife(Math.max(1, max));
-                              }
-                            }
-                            // Valor absoluto
-                            else {
-                              const value = parseInt(input);
-                              if (!isNaN(value)) {
-                                setCurrentLife(Math.max(0, Math.min(maxLife, value)));
-                              }
-                            }
-                          }
-                          
-                          setEditingLife(false);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.target.blur();
-                          } else if (e.key === 'Escape') {
-                            setEditingLife(false);
-                          }
-                        }}
-                        placeholder="+10, -5, 50, 100/150"
-                        autoFocus
-                      />
-                      <div className="life-edit-hint">Digite +/- ou valor</div>
-                    </div>
-                  )}
                   
                   {editingMaxLife && (
                     <div className="life-edit-popup">
@@ -2916,15 +2959,79 @@ function App() {
                   <div className="life-bar-header">
                     <span className="life-label">SANIDADE</span>
                     <div className="life-header-right">
-                      <div 
-                        className="life-values-display"
-                        onClick={() => {
-                          setTempSanity('');
-                          setEditingSanity(true);
-                        }}
-                      >
-                        {currentSanity} / {maxSanity}
-                      </div>
+                      {editingSanity ? (
+                        <input
+                          type="text"
+                          className="life-operation-input"
+                          value={tempSanity}
+                          onChange={(e) => setTempSanity(e.target.value)}
+                          onBlur={() => {
+                            const input = tempSanity.trim();
+                            
+                            if (input) {
+                              // Operação de adição (+X)
+                              if (input.startsWith('+')) {
+                                const value = parseInt(input.substring(1)) || 0;
+                                setCurrentSanity(Math.max(0, Math.min(maxSanity, currentSanity + value)));
+                              }
+                              // Operação de subtração (-X)
+                              else if (input.startsWith('-')) {
+                                const value = parseInt(input.substring(1)) || 0;
+                                setCurrentSanity(Math.max(0, Math.min(maxSanity, currentSanity - value)));
+                              }
+                              // Formato atual / máximo
+                              else if (input.includes('/')) {
+                                const values = input.split('/').map(v => v.trim());
+                                if (values.length === 2) {
+                                  const current = parseInt(values[0]) || 0;
+                                  const max = parseInt(values[1]) || 1;
+                                  setCurrentSanity(Math.max(0, Math.min(max, current)));
+                                  setMaxSanity(Math.max(1, max));
+                                }
+                              }
+                              // Valor absoluto
+                              else {
+                                const value = parseInt(input);
+                                if (!isNaN(value)) {
+                                  setCurrentSanity(Math.max(0, Math.min(maxSanity, value)));
+                                }
+                              }
+                            }
+                            
+                            setEditingSanity(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.target.blur();
+                            } else if (e.key === 'Escape') {
+                              setEditingSanity(false);
+                            }
+                          }}
+                          placeholder={currentSanity.toString()}
+                          autoFocus
+                          style={{
+                            width: '100px',
+                            textAlign: 'center',
+                            fontSize: '0.9rem',
+                            padding: '0.25rem',
+                            border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                            borderRadius: '4px',
+                            background: darkMode ? '#404245' : '#fff',
+                            color: darkMode ? '#dcddde' : '#2c3e50',
+                            outline: 'none'
+                          }}
+                        />
+                      ) : (
+                        <div 
+                          className="life-values-display"
+                          onClick={() => {
+                            setTempSanity('');
+                            setEditingSanity(true);
+                          }}
+                        >
+                          {currentSanity} / {maxSanity}
+                        </div>
+                      )}
                       <button
                         className="btn-edit-max"
                         onClick={(e) => {
@@ -2938,66 +3045,6 @@ function App() {
                       </button>
                 </div>
               </div>
-              
-                  {editingSanity && (
-                    <div className="life-edit-popup">
-                      <div className="life-current-display">
-                        <span className="current-label">ATUAL</span>
-                        <span className="current-value">{currentSanity}</span>
-                      </div>
-                  <input
-                        type="text"
-                        className="life-operation-input"
-                        value={tempSanity}
-                        onChange={(e) => setTempSanity(e.target.value)}
-                        onBlur={() => {
-                          const input = tempSanity.trim();
-                          
-                          if (input) {
-                            // Operação de adição (+X)
-                            if (input.startsWith('+')) {
-                              const value = parseInt(input.substring(1)) || 0;
-                              setCurrentSanity(Math.max(0, Math.min(maxSanity, currentSanity + value)));
-                            }
-                            // Operação de subtração (-X)
-                            else if (input.startsWith('-')) {
-                              const value = parseInt(input.substring(1)) || 0;
-                              setCurrentSanity(Math.max(0, Math.min(maxSanity, currentSanity - value)));
-                            }
-                            // Formato atual / máximo
-                            else if (input.includes('/')) {
-                              const values = input.split('/').map(v => v.trim());
-                              if (values.length === 2) {
-                                const current = parseInt(values[0]) || 0;
-                                const max = parseInt(values[1]) || 1;
-                                setCurrentSanity(Math.max(0, Math.min(max, current)));
-                                setMaxSanity(Math.max(1, max));
-                              }
-                            }
-                            // Valor absoluto
-                            else {
-                              const value = parseInt(input);
-                              if (!isNaN(value)) {
-                                setCurrentSanity(Math.max(0, Math.min(maxSanity, value)));
-                              }
-                            }
-                          }
-                          
-                          setEditingSanity(false);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.target.blur();
-                          } else if (e.key === 'Escape') {
-                            setEditingSanity(false);
-                          }
-                        }}
-                        placeholder="+10, -5, 50, 100/150"
-                        autoFocus
-                      />
-                      <div className="life-edit-hint">Digite +/- ou valor</div>
-                    </div>
-                  )}
                   
                   {editingMaxSanity && (
                     <div className="life-edit-popup">
@@ -3314,10 +3361,7 @@ function App() {
                         }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
+                        <img src={m4Icon} alt="Armas" style={{ width: '27px', height: '27px' }} />
                         Armas
                       </span>
                     </label>
@@ -3333,10 +3377,7 @@ function App() {
                         }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                          <path d="M12 2v20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
+                        <img src={coleteIcon} alt="Armaduras" style={{ width: '27px', height: '27px' }} />
                         Armaduras
                       </span>
                     </label>
@@ -3352,18 +3393,7 @@ function App() {
                         }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg width="27" height="27" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                          <rect x="20" y="34" width="60" height="45" rx="10" fill="currentColor"/>
-                          <path
-                            d="M32 32 Q32 20 50 20 Q68 20 68 32"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="3"
-                            strokeLinecap="butt"
-                          />
-                          <rect x="45" y="44" width="10" height="23" fill="white"/>
-                          <rect x="39" y="50" width="23" height="10" fill="white"/>
-                        </svg>
+                        <img src={medicalIcon} alt="Consumíveis" style={{ width: '27px', height: '27px' }} />
                         Consumíveis
                       </span>
                     </label>
@@ -3399,15 +3429,7 @@ function App() {
                         }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="35" height="35">
-                          <g transform="rotate(40 50 50)" fill="currentColor">
-                            <rect x="37" y="72" width="24" height="8" rx="1"/>
-                            <rect x="39" y="38" width="20" height="34"/>
-                            <path d="M39 38 L59 38 Q65 26 50 8 Q35 26 39 38 Z"/>
-                            <rect x="39" y="36" width="20" height="2" fill="transparent"/>
-                            <rect x="39" y="33" width="20" height="2" fill="transparent"/>
-                          </g>
-                        </svg>
+                        <img src={municaoIcon} alt="Munições" style={{ width: '35px', height: '35px' }} />
                         Munições
                       </span>
                     </label>
@@ -3425,30 +3447,7 @@ function App() {
                         }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="35" height="35">
-                          <g transform="rotate(5 50 50)">
-                            {/* Corpo principal do carregador - preto */}
-                            <rect x="30" y="20" width="40" height="55" rx="2" fill="currentColor"/>
-                            {/* Base larga e arredondada */}
-                            <rect x="25" y="72" width="50" height="8" rx="4" fill="currentColor"/>
-                            {/* Abertura curva no topo com ponta de munição branca */}
-                            <path d="M35 20 Q40 18 45 20 Q50 18 55 20 Q60 18 65 20" 
-                                  fill="none" 
-                                  stroke="white" 
-                                  strokeWidth="2" 
-                                  strokeLinecap="round"/>
-                            <circle cx="50" cy="22" r="3" fill="white"/>
-                            {/* Janela vertical branca */}
-                            <rect x="42" y="28" width="16" height="35" rx="1" fill="white"/>
-                            {/* Quatro munições estilizadas (retângulos brancos) dentro da janela */}
-                            <rect x="44" y="30" width="12" height="5" rx="0.5" fill="currentColor"/>
-                            <rect x="44" y="37" width="12" height="5" rx="0.5" fill="currentColor"/>
-                            <rect x="44" y="44" width="12" height="5" rx="0.5" fill="currentColor"/>
-                            <rect x="44" y="51" width="12" height="5" rx="0.5" fill="currentColor"/>
-                            {/* Forma oval branca perto da parte inferior (última bala) */}
-                            <ellipse cx="50" cy="58" rx="6" ry="3" fill="white"/>
-                          </g>
-                        </svg>
+                        <img src={clipIcon} alt="Carregadores" style={{ width: '35px', height: '35px' }} />
                         Carregadores
                       </span>
                     </label>
@@ -3467,10 +3466,7 @@ function App() {
                         }}
                       />
                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none"/>
-                          <path d="M12 6v12M9 9h6M9 15h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
+                        <img src={dinheiroIcon} alt="Dinheiro" style={{ width: '27px', height: '27px' }} />
                         Dinheiro
                       </span>
                     </label>
@@ -3767,6 +3763,33 @@ function App() {
                       </small>
                     </div>
                     <div className="form-group">
+                      <label htmlFor="initialAmmo">
+                        Quantidade Inicial de Munições: <span style={{ color: '#95a5a6', fontSize: '0.75rem' }}>(opcional)</span>
+                      </label>
+                      <input
+                        id="initialAmmo"
+                        type="number"
+                        value={initialAmmo === 0 ? '' : initialAmmo}
+                        onChange={(e) => {
+                          const value = e.target.value === '' ? 0 : parseInt(e.target.value) || 0;
+                          const capacity = parseInt(magazineCapacity) || 30;
+                          setInitialAmmo(Math.min(value, capacity)); // Garante que não exceda a capacidade
+                        }}
+                        placeholder="Ex: 0"
+                        className="input"
+                        min="0"
+                        max={magazineCapacity ? parseInt(magazineCapacity) : undefined}
+                      />
+                      <small style={{ 
+                        color: darkMode ? '#72767d' : '#7f8c8d', 
+                        fontSize: '0.75rem',
+                        display: 'block',
+                        marginTop: '0.25rem'
+                      }}>
+                        Quantidade de munições que cada carregador começa com. Deixe em branco ou 0 para começar vazio.
+                      </small>
+                    </div>
+                    <div className="form-group">
                       <label htmlFor="ammunitionTypeMag">
                         Tipo de Munição (compatível): <span style={{ color: '#e74c3c' }}>*</span>
                         {inventory.filter(item => item.category === 'municoes').length === 0 && (
@@ -3863,9 +3886,9 @@ function App() {
                           <div key={moeda.id} style={{ 
                             marginBottom: '1rem', 
                             padding: '1rem', 
-                            background: darkMode ? '#36393f' : '#f8f9fa',
+                            background: darkMode ? '#404245' : '#f8f9fa',
                             borderRadius: '8px',
-                            border: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                            border: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
                             minWidth: 0,
                             overflow: 'hidden'
                           }}>
@@ -3934,7 +3957,7 @@ function App() {
                                 </label>
                                 <input
                                   type="number"
-                                  value={moeda.debito}
+                                  value={moeda.debito === 0 ? '' : moeda.debito}
                                   onChange={(e) => {
                                     const newMoedas = [...moedas];
                                     newMoedas[index] = { ...newMoedas[index], debito: parseFloat(e.target.value) || 0 };
@@ -3953,7 +3976,7 @@ function App() {
                                 </label>
                                 <input
                                   type="number"
-                                  value={moeda.credito}
+                                  value={moeda.credito === 0 ? '' : moeda.credito}
                                   onChange={(e) => {
                                     const newMoedas = [...moedas];
                                     newMoedas[index] = { ...newMoedas[index], credito: parseFloat(e.target.value) || 0 };
@@ -3972,7 +3995,7 @@ function App() {
                                 </label>
                                 <input
                                   type="number"
-                                  value={moeda.dinheiroEspecie}
+                                  value={moeda.dinheiroEspecie === 0 ? '' : moeda.dinheiroEspecie}
                                   onChange={(e) => {
                                     const newMoedas = [...moedas];
                                     newMoedas[index] = { ...newMoedas[index], dinheiroEspecie: parseFloat(e.target.value) || 0 };
@@ -4099,36 +4122,19 @@ function App() {
                       <div className="discord-section-title">
                         {category === 'armas' && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                              <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
+                            <img src={m4Icon} alt="Armas" style={{ width: '20px', height: '20px' }} />
                             ARMAS
                     </span>
                         )}
                         {category === 'armaduras' && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-                              <path d="M12 2v20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
+                            <img src={coleteIcon} alt="Armaduras" style={{ width: '20px', height: '20px' }} />
                             ARMADURAS
                           </span>
                         )}
                         {category === 'consumiveis' && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <svg width="20" height="20" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                              <rect x="20" y="34" width="60" height="45" rx="10" fill="currentColor"/>
-                              <path
-                                d="M32 32 Q32 20 50 20 Q68 20 68 32"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                                strokeLinecap="butt"
-                              />
-                              <rect x="45" y="44" width="10" height="23" fill="white"/>
-                              <rect x="39" y="50" width="23" height="10" fill="white"/>
-                            </svg>
+                            <img src={medicalIcon} alt="Consumíveis" style={{ width: '20px', height: '20px' }} />
                             CONSUMÍVEIS
                     </span>
                         )}
@@ -4142,44 +4148,13 @@ function App() {
                         )}
                         {category === 'municoes' && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="35" height="35">
-                              <g transform="rotate(40 50 50)" fill="currentColor">
-                                <rect x="37" y="72" width="24" height="8" rx="1"/>
-                                <rect x="39" y="38" width="20" height="34"/>
-                                <path d="M39 38 L59 38 Q65 26 50 8 Q35 26 39 38 Z"/>
-                                <rect x="39" y="36" width="20" height="2" fill="transparent"/>
-                                <rect x="39" y="33" width="20" height="2" fill="transparent"/>
-                              </g>
-                            </svg>
+                            <img src={municaoIcon} alt="Munições" style={{ width: '35px', height: '35px' }} />
                             MUNIÇÕES
                           </span>
                         )}
                         {category === 'carregadores' && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="35" height="35">
-                              <g transform="rotate(5 50 50)">
-                                {/* Corpo principal do carregador - preto */}
-                                <rect x="30" y="20" width="40" height="55" rx="2" fill="currentColor"/>
-                                {/* Base larga e arredondada */}
-                                <rect x="25" y="72" width="50" height="8" rx="4" fill="currentColor"/>
-                                {/* Abertura curva no topo com ponta de munição branca */}
-                                <path d="M35 20 Q40 18 45 20 Q50 18 55 20 Q60 18 65 20" 
-                                      fill="none" 
-                                      stroke="white" 
-                                      strokeWidth="2" 
-                                      strokeLinecap="round"/>
-                                <circle cx="50" cy="22" r="3" fill="white"/>
-                                {/* Janela vertical branca */}
-                                <rect x="42" y="28" width="16" height="35" rx="1" fill="white"/>
-                                {/* Quatro munições estilizadas (retângulos brancos) dentro da janela */}
-                                <rect x="44" y="30" width="12" height="5" rx="0.5" fill="currentColor"/>
-                                <rect x="44" y="37" width="12" height="5" rx="0.5" fill="currentColor"/>
-                                <rect x="44" y="44" width="12" height="5" rx="0.5" fill="currentColor"/>
-                                <rect x="44" y="51" width="12" height="5" rx="0.5" fill="currentColor"/>
-                                {/* Forma oval branca perto da parte inferior (última bala) */}
-                                <ellipse cx="50" cy="58" rx="6" ry="3" fill="white"/>
-                              </g>
-                            </svg>
+                            <img src={clipIcon} alt="Carregadores" style={{ width: '35px', height: '35px' }} />
                             CARREGADORES
                           </span>
                         )}
@@ -4194,43 +4169,318 @@ function App() {
                         )}
                         {category === 'dinheiro' && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none"/>
-                              <path d="M12 6v12M9 9h6M9 15h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                            </svg>
+                            <img src={dinheiroIcon} alt="Dinheiro" style={{ width: '20px', height: '20px' }} />
                             DINHEIRO
                           </span>
                         )}
                   </div>
                       <div className="discord-attributes">
                     {groupedInventory[category].map((item) => {
-                            // Para carregadores, calcula quantos estão carregados e vazios
-                            let loadedQty = null;
-                            let emptyQty = null;
-                            let partialQty = null;
-                            
+                            // Para carregadores, renderiza cada instância individualmente
                             if (item.category === 'carregadores') {
+                              const capacity = parseInt(item.magazineCapacity) || 30;
+                              let instances = [];
+                              
                               if (item.instances && Array.isArray(item.instances)) {
-                                // Sistema novo: conta instâncias
-                                const capacity = parseInt(item.magazineCapacity) || 30;
-                                loadedQty = item.instances.filter(inst => 
-                                  inst.isLoaded && inst.currentAmmo === capacity
-                                ).length;
-                                emptyQty = item.instances.filter(inst => 
-                                  !inst.isLoaded && inst.currentAmmo === 0
-                                ).length;
-                                partialQty = item.instances.filter(inst => 
-                                  inst.currentAmmo > 0 && inst.currentAmmo < capacity
-                                ).length;
+                                // Sistema novo: usa instâncias existentes
+                                instances = item.instances;
+                                console.log('Renderizando carregadores com instâncias:', item.name, instances.map(i => ({ currentAmmo: i.currentAmmo, isLoaded: i.isLoaded })));
                               } else {
-                                // Sistema antigo: usa loadedQuantity
-                                loadedQty = item.loadedQuantity || 0;
-                                emptyQty = item.quantity - (item.loadedQuantity || 0);
+                                // Sistema antigo: cria instâncias baseadas na quantidade
+                                const quantity = item.quantity || 1;
+                                for (let i = 0; i < quantity; i++) {
+                                  instances.push({
+                                    instanceId: `${item.id}_${i}`,
+                                    currentAmmo: 0 // Carregador novo começa vazio
+                                  });
+                                }
                               }
+                              
+                              // Renderiza cada instância individualmente
+                              return instances.map((instance, instanceIndex) => (
+                                <div key={`${item.id}-${instance.instanceId || instanceIndex}`} className="discord-attribute" style={{ position: 'relative' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
+                                      <span className="discord-attr-name" style={{ flex: 1 }}>
+                                        {item.name}
+                                        {item.ammunitionType && ` (${item.ammunitionType})`}
+                                        {` (${instance.currentAmmo !== undefined && instance.currentAmmo !== null ? instance.currentAmmo : 0}/${capacity} munições)`}
+                                        :
+                                      </span>
+                                      <div style={{ position: 'relative' }}>
+                                        <span className="discord-attr-value" style={{ userSelect: 'none' }}>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {item.category !== 'dinheiro' && (
+                                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                      <button
+                                        onClick={() => handleEditInventoryItem(item)}
+                                        style={{
+                                          padding: '0.25rem 0.5rem',
+                                          background: 'rgba(114, 137, 218, 0.2)',
+                                          border: '1px solid rgba(114, 137, 218, 0.3)',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          color: '#7289da',
+                                          fontSize: '0.75rem',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem',
+                                          transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.target.style.background = 'rgba(114, 137, 218, 0.3)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.target.style.background = 'rgba(114, 137, 218, 0.2)';
+                                        }}
+                                        title="Editar item"
+                                      >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                        Editar
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          if (confirm('Tem certeza que deseja excluir este item?')) {
+                                            handleDeleteInventoryItem(item.id);
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '0.25rem 0.5rem',
+                                          background: 'rgba(123, 31, 162, 0.2)',
+                                          border: '1px solid rgba(123, 31, 162, 0.3)',
+                                          borderRadius: '4px',
+                                          cursor: 'pointer',
+                                          color: '#ba68c8',
+                                          fontSize: '0.75rem',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.25rem',
+                                          transition: 'all 0.2s ease'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.target.style.background = 'rgba(123, 31, 162, 0.3)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.target.style.background = 'rgba(123, 31, 162, 0.2)';
+                                        }}
+                                        title="Excluir item"
+                                      >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                        </svg>
+                                        Excluir
+                                      </button>
+                                      {(item.linkedAmmunitions || item.linkedMagazine || item.linkedWeapon) && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setShowItemInfo(showItemInfo === item.id ? null : item.id);
+                                          }}
+                                          style={{
+                                            padding: '0.25rem 0.5rem',
+                                            background: showItemInfo === item.id ? (darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.2)') : 'rgba(114, 137, 218, 0.2)',
+                                            border: '1px solid rgba(114, 137, 218, 0.3)',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            color: '#7289da',
+                                            fontSize: '0.75rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.25rem',
+                                            transition: 'all 0.2s ease'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            if (showItemInfo !== item.id) {
+                                              e.target.style.background = 'rgba(114, 137, 218, 0.3)';
+                                            }
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            if (showItemInfo !== item.id) {
+                                              e.target.style.background = 'rgba(114, 137, 218, 0.2)';
+                                            }
+                                          }}
+                                          title="Ver informações do item"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                                            <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                          </svg>
+                                          Info
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                  {showItemInfo === item.id && (
+                                    <div 
+                                      style={{
+                                        position: 'absolute',
+                                        top: '100%',
+                                        left: 0,
+                                        right: 0,
+                                        marginTop: '0.5rem',
+                                        padding: '1rem',
+                                        background: darkMode ? '#3a3c40' : '#ffffff',
+                                        border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                        borderRadius: '8px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                        zIndex: 1000,
+                                        minWidth: '250px',
+                                        maxWidth: '400px'
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        marginBottom: '0.75rem',
+                                        paddingBottom: '0.75rem',
+                                        borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`
+                                      }}>
+                                        <h3 style={{ 
+                                          margin: 0, 
+                                          fontSize: '1rem', 
+                                          fontWeight: '700',
+                                          color: darkMode ? '#7289da' : '#5b9bd5'
+                                        }}>
+                                          Informações do Item
+                                        </h3>
+                                        <button
+                                          onClick={() => setShowItemInfo(null)}
+                                          style={{
+                                            padding: '0.25rem',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            color: darkMode ? '#dcddde' : '#2c3e50',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            borderRadius: '4px',
+                                            transition: 'background 0.2s ease'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background = darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background = 'transparent';
+                                          }}
+                                        >
+                                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                            <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                        <div>
+                                          <span style={{ 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '600', 
+                                            color: darkMode ? '#7289da' : '#5b9bd5',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                          }}>
+                                            Nome:
+                                          </span>
+                                          <div style={{ 
+                                            fontSize: '0.9rem', 
+                                            color: darkMode ? '#dcddde' : '#2c3e50',
+                                            marginTop: '0.25rem'
+                                          }}>
+                                            {item.name}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <span style={{ 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '600', 
+                                            color: darkMode ? '#7289da' : '#5b9bd5',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                          }}>
+                                            Categoria:
+                                          </span>
+                                          <div style={{ 
+                                            fontSize: '0.9rem', 
+                                            color: darkMode ? '#dcddde' : '#2c3e50',
+                                            marginTop: '0.25rem'
+                                          }}>
+                                            Carregadores
+                                          </div>
+                                        </div>
+                                        {item.ammunitionType && (
+                                          <div>
+                                            <span style={{ 
+                                              fontSize: '0.75rem', 
+                                              fontWeight: '600', 
+                                              color: darkMode ? '#7289da' : '#5b9bd5',
+                                              textTransform: 'uppercase',
+                                              letterSpacing: '0.5px'
+                                            }}>
+                                              Tipo de Munição Aceita:
+                                            </span>
+                                            <div style={{ 
+                                              fontSize: '0.9rem', 
+                                              color: darkMode ? '#dcddde' : '#2c3e50',
+                                              marginTop: '0.25rem'
+                                            }}>
+                                              {item.ammunitionType}
+                                            </div>
+                                          </div>
+                                        )}
+                                        {item.magazineCapacity && (
+                                          <div>
+                                            <span style={{ 
+                                              fontSize: '0.75rem', 
+                                              fontWeight: '600', 
+                                              color: darkMode ? '#7289da' : '#5b9bd5',
+                                              textTransform: 'uppercase',
+                                              letterSpacing: '0.5px'
+                                            }}>
+                                              Capacidade:
+                                            </span>
+                                            <div style={{ 
+                                              fontSize: '0.9rem', 
+                                              color: darkMode ? '#dcddde' : '#2c3e50',
+                                              marginTop: '0.25rem'
+                                            }}>
+                                              {item.magazineCapacity} munições
+                                            </div>
+                                          </div>
+                                        )}
+                                        <div>
+                                          <span style={{ 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '600', 
+                                            color: darkMode ? '#7289da' : '#5b9bd5',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                          }}>
+                                            Munições Atuais:
+                                          </span>
+                                          <div style={{ 
+                                            fontSize: '0.9rem', 
+                                            color: darkMode ? '#dcddde' : '#2c3e50',
+                                            marginTop: '0.25rem'
+                                          }}>
+                                            {instance.currentAmmo || 0}/{capacity}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ));
                             }
                             
-                            const partialAmmo = item.category === 'carregadores' && item.partialAmmo ? item.partialAmmo : null;
-                            
+                            // Para outros itens (não carregadores), renderiza normalmente
                             return (
                           <div key={item.id} className="discord-attribute" style={{ position: 'relative' }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
@@ -4240,14 +4490,13 @@ function App() {
                                   {item.category === 'municoes' && item.ammunitionType && ` (${item.ammunitionType})`}
                                   {item.category === 'carregadores' && item.ammunitionType && ` (${item.ammunitionType})`}
                                   {item.magazineCapacity && ` (${item.magazineCapacity} munições)`}
-                                  {partialAmmo && ` [Parcial: ${partialAmmo}/${item.magazineCapacity}]`}
                                   {item.category === 'dinheiro' && item.moedas && item.moedas.length > 0 && (
                                     <div style={{
                                       marginTop: '0.5rem',
                                       padding: '0.75rem',
-                                      background: darkMode ? '#2f3136' : '#ffffff',
+                                      background: darkMode ? '#3a3c40' : '#ffffff',
                                       borderRadius: '6px',
-                                      border: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                                      border: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
                                       fontFamily: 'monospace',
                                       fontSize: '0.85rem'
                                     }}>
@@ -4260,7 +4509,7 @@ function App() {
                                         const total = (moeda.debito || 0) + (moeda.credito || 0) + (moeda.dinheiroEspecie || 0);
                                         
                                         return (
-                                          <div key={idx} style={{ marginBottom: idx < item.moedas.length - 1 ? '0.75rem' : '0', paddingBottom: idx < item.moedas.length - 1 ? '0.75rem' : '0', borderBottom: idx < item.moedas.length - 1 ? `1px dashed ${darkMode ? '#40444b' : '#e3e8ed'}` : 'none' }}>
+                                          <div key={idx} style={{ marginBottom: idx < item.moedas.length - 1 ? '0.75rem' : '0', paddingBottom: idx < item.moedas.length - 1 ? '0.75rem' : '0', borderBottom: idx < item.moedas.length - 1 ? `1px dashed ${darkMode ? '#4a4d52' : '#e3e8ed'}` : 'none' }}>
                                             <div style={{ 
                                               fontWeight: '600', 
                                               marginBottom: '0.5rem',
@@ -4273,249 +4522,249 @@ function App() {
                                               {moeda.debito > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                   <span style={{ color: darkMode ? '#dcddde' : '#2c3e50' }}>Débito</span>
-                                                  <span 
-                                                    style={{ 
-                                                      cursor: 'pointer',
-                                                      userSelect: 'none',
-                                                      padding: '0.125rem 0.25rem',
-                                                      borderRadius: '4px',
-                                                      transition: 'background 0.2s',
-                                                      backgroundColor: editingMoneyField === fieldKeyDebito ? (darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)') : 'transparent',
-                                                      fontWeight: '600',
-                                                      color: darkMode ? '#dcddde' : '#2c3e50',
-                                                      position: 'relative'
-                                                    }}
-                                                    onClick={() => {
-                                                      setTempMoneyValue('');
-                                                      setEditingMoneyField(fieldKeyDebito);
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                      if (editingMoneyField !== fieldKeyDebito) {
-                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
-                                                      }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                      if (editingMoneyField !== fieldKeyDebito) {
-                                                        e.target.style.backgroundColor = 'transparent';
-                                                      }
-                                                    }}
-                                                  >
-                                                    {simbolo}{(moeda.debito || 0).toFixed(2)}
-                                                  </span>
-                                                  {editingMoneyField === fieldKeyDebito && (
-                                                    <div className="life-edit-popup" style={{ top: '100%', right: 0, marginTop: '0.5rem', zIndex: 1000 }}>
-                                                      <div className="life-current-display">
-                                                        <span className="current-label">DÉBITO ATUAL</span>
-                                                        <span className="current-value">{(moeda.debito || 0).toFixed(2)}</span>
-                                                      </div>
-                                                      <input
-                                                        type="text"
-                                                        className="life-operation-input"
-                                                        value={tempMoneyValue}
-                                                        onChange={(e) => setTempMoneyValue(e.target.value)}
-                                                        onBlur={() => {
-                                                          const input = tempMoneyValue.trim();
-                                                          if (input) {
-                                                            const currentValue = moeda.debito || 0;
-                                                            if (input.startsWith('+')) {
-                                                              const value = parseFloat(input.substring(1)) || 0;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue + value));
-                                                            } else if (input.startsWith('-')) {
-                                                              const value = parseFloat(input.substring(1)) || 0;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue - value));
-                                                            } else if (input.startsWith('*')) {
-                                                              const value = parseFloat(input.substring(1)) || 1;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue * value));
-                                                            } else if (input.startsWith('/')) {
-                                                              const value = parseFloat(input.substring(1)) || 1;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue / value));
-                                                            } else {
-                                                              const value = parseFloat(input);
-                                                              if (!isNaN(value)) {
-                                                                handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, value));
-                                                              }
+                                                  {editingMoneyField === fieldKeyDebito ? (
+                                                    <input
+                                                      type="text"
+                                                      className="life-operation-input"
+                                                      value={tempMoneyValue}
+                                                      onChange={(e) => setTempMoneyValue(e.target.value)}
+                                                      onBlur={() => {
+                                                        const input = tempMoneyValue.trim();
+                                                        if (input) {
+                                                          const currentValue = moeda.debito || 0;
+                                                          if (input.startsWith('+')) {
+                                                            const value = parseFloat(input.substring(1)) || 0;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue + value));
+                                                          } else if (input.startsWith('-')) {
+                                                            const value = parseFloat(input.substring(1)) || 0;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue - value));
+                                                          } else if (input.startsWith('*')) {
+                                                            const value = parseFloat(input.substring(1)) || 1;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue * value));
+                                                          } else if (input.startsWith('/')) {
+                                                            const value = parseFloat(input.substring(1)) || 1;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue / value));
+                                                          } else {
+                                                            const value = parseFloat(input);
+                                                            if (!isNaN(value)) {
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, value));
                                                             }
                                                           }
+                                                        }
+                                                        setEditingMoneyField(null);
+                                                      }}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                          e.target.blur();
+                                                        } else if (e.key === 'Escape') {
                                                           setEditingMoneyField(null);
-                                                        }}
-                                                        onKeyDown={(e) => {
-                                                          if (e.key === 'Enter') {
-                                                            e.target.blur();
-                                                          } else if (e.key === 'Escape') {
-                                                            setEditingMoneyField(null);
-                                                          }
-                                                        }}
-                                                        placeholder="+100, -50, 500, *2, /2"
-                                                        autoFocus
-                                                      />
-                                                      <div className="life-edit-hint">Digite +/-/*// ou valor</div>
-                                                    </div>
+                                                        }
+                                                      }}
+                                                      placeholder={formatMoney(moeda.debito || 0)}
+                                                      autoFocus
+                                                      style={{
+                                                        width: '120px',
+                                                        textAlign: 'right',
+                                                        fontSize: '0.85rem',
+                                                        padding: '0.25rem',
+                                                        border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                                        borderRadius: '4px',
+                                                        background: darkMode ? '#404245' : '#fff',
+                                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                                        outline: 'none'
+                                                      }}
+                                                    />
+                                                  ) : (
+                                                    <span 
+                                                      style={{ 
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none',
+                                                        padding: '0.125rem 0.25rem',
+                                                        borderRadius: '4px',
+                                                        transition: 'background 0.2s',
+                                                        backgroundColor: 'transparent',
+                                                        fontWeight: '600',
+                                                        color: darkMode ? '#dcddde' : '#2c3e50'
+                                                      }}
+                                                      onClick={() => {
+                                                        setTempMoneyValue('');
+                                                        setEditingMoneyField(fieldKeyDebito);
+                                                      }}
+                                                      onMouseEnter={(e) => {
+                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
+                                                      }}
+                                                      onMouseLeave={(e) => {
+                                                        e.target.style.backgroundColor = 'transparent';
+                                                      }}
+                                                    >
+                                                      {simbolo}{formatMoney(moeda.debito || 0)}
+                                                    </span>
                                                   )}
                                                 </div>
                                               )}
                                               {moeda.credito > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                   <span style={{ color: darkMode ? '#dcddde' : '#2c3e50' }}>Crédito</span>
-                                                  <span 
-                                                    style={{ 
-                                                      cursor: 'pointer',
-                                                      userSelect: 'none',
-                                                      padding: '0.125rem 0.25rem',
-                                                      borderRadius: '4px',
-                                                      transition: 'background 0.2s',
-                                                      backgroundColor: editingMoneyField === fieldKeyCredito ? (darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)') : 'transparent',
-                                                      fontWeight: '600',
-                                                      color: darkMode ? '#dcddde' : '#2c3e50',
-                                                      position: 'relative'
-                                                    }}
-                                                    onClick={() => {
-                                                      setTempMoneyValue('');
-                                                      setEditingMoneyField(fieldKeyCredito);
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                      if (editingMoneyField !== fieldKeyCredito) {
-                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
-                                                      }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                      if (editingMoneyField !== fieldKeyCredito) {
-                                                        e.target.style.backgroundColor = 'transparent';
-                                                      }
-                                                    }}
-                                                  >
-                                                    {simbolo}{(moeda.credito || 0).toFixed(2)}
-                                                  </span>
-                                                  {editingMoneyField === fieldKeyCredito && (
-                                                    <div className="life-edit-popup" style={{ top: '100%', right: 0, marginTop: '0.5rem', zIndex: 1000 }}>
-                                                      <div className="life-current-display">
-                                                        <span className="current-label">CRÉDITO ATUAL</span>
-                                                        <span className="current-value">{(moeda.credito || 0).toFixed(2)}</span>
-                                                      </div>
-                                                      <input
-                                                        type="text"
-                                                        className="life-operation-input"
-                                                        value={tempMoneyValue}
-                                                        onChange={(e) => setTempMoneyValue(e.target.value)}
-                                                        onBlur={() => {
-                                                          const input = tempMoneyValue.trim();
-                                                          if (input) {
-                                                            const currentValue = moeda.credito || 0;
-                                                            if (input.startsWith('+')) {
-                                                              const value = parseFloat(input.substring(1)) || 0;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue + value));
-                                                            } else if (input.startsWith('-')) {
-                                                              const value = parseFloat(input.substring(1)) || 0;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue - value));
-                                                            } else if (input.startsWith('*')) {
-                                                              const value = parseFloat(input.substring(1)) || 1;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue * value));
-                                                            } else if (input.startsWith('/')) {
-                                                              const value = parseFloat(input.substring(1)) || 1;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue / value));
-                                                            } else {
-                                                              const value = parseFloat(input);
-                                                              if (!isNaN(value)) {
-                                                                handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, value));
-                                                              }
+                                                  {editingMoneyField === fieldKeyCredito ? (
+                                                    <input
+                                                      type="text"
+                                                      className="life-operation-input"
+                                                      value={tempMoneyValue}
+                                                      onChange={(e) => setTempMoneyValue(e.target.value)}
+                                                      onBlur={() => {
+                                                        const input = tempMoneyValue.trim();
+                                                        if (input) {
+                                                          const currentValue = moeda.credito || 0;
+                                                          if (input.startsWith('+')) {
+                                                            const value = parseFloat(input.substring(1)) || 0;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue + value));
+                                                          } else if (input.startsWith('-')) {
+                                                            const value = parseFloat(input.substring(1)) || 0;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue - value));
+                                                          } else if (input.startsWith('*')) {
+                                                            const value = parseFloat(input.substring(1)) || 1;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue * value));
+                                                          } else if (input.startsWith('/')) {
+                                                            const value = parseFloat(input.substring(1)) || 1;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue / value));
+                                                          } else {
+                                                            const value = parseFloat(input);
+                                                            if (!isNaN(value)) {
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, value));
                                                             }
                                                           }
+                                                        }
+                                                        setEditingMoneyField(null);
+                                                      }}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                          e.target.blur();
+                                                        } else if (e.key === 'Escape') {
                                                           setEditingMoneyField(null);
-                                                        }}
-                                                        onKeyDown={(e) => {
-                                                          if (e.key === 'Enter') {
-                                                            e.target.blur();
-                                                          } else if (e.key === 'Escape') {
-                                                            setEditingMoneyField(null);
-                                                          }
-                                                        }}
-                                                        placeholder="+100, -50, 500, *2, /2"
-                                                        autoFocus
-                                                      />
-                                                      <div className="life-edit-hint">Digite +/-/*// ou valor</div>
-                                                    </div>
+                                                        }
+                                                      }}
+                                                      placeholder={formatMoney(moeda.credito || 0)}
+                                                      autoFocus
+                                                      style={{
+                                                        width: '120px',
+                                                        textAlign: 'right',
+                                                        fontSize: '0.85rem',
+                                                        padding: '0.25rem',
+                                                        border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                                        borderRadius: '4px',
+                                                        background: darkMode ? '#404245' : '#fff',
+                                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                                        outline: 'none'
+                                                      }}
+                                                    />
+                                                  ) : (
+                                                    <span 
+                                                      style={{ 
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none',
+                                                        padding: '0.125rem 0.25rem',
+                                                        borderRadius: '4px',
+                                                        transition: 'background 0.2s',
+                                                        backgroundColor: 'transparent',
+                                                        fontWeight: '600',
+                                                        color: darkMode ? '#dcddde' : '#2c3e50'
+                                                      }}
+                                                      onClick={() => {
+                                                        setTempMoneyValue('');
+                                                        setEditingMoneyField(fieldKeyCredito);
+                                                      }}
+                                                      onMouseEnter={(e) => {
+                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
+                                                      }}
+                                                      onMouseLeave={(e) => {
+                                                        e.target.style.backgroundColor = 'transparent';
+                                                      }}
+                                                    >
+                                                      {simbolo}{formatMoney(moeda.credito || 0)}
+                                                    </span>
                                                   )}
                                                 </div>
                                               )}
                                               {moeda.dinheiroEspecie > 0 && (
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                   <span style={{ color: darkMode ? '#dcddde' : '#2c3e50' }}>Espécie</span>
-                                                  <span 
-                                                    style={{ 
-                                                      cursor: 'pointer',
-                                                      userSelect: 'none',
-                                                      padding: '0.125rem 0.25rem',
-                                                      borderRadius: '4px',
-                                                      transition: 'background 0.2s',
-                                                      backgroundColor: editingMoneyField === fieldKeyEspecie ? (darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)') : 'transparent',
-                                                      fontWeight: '600',
-                                                      color: darkMode ? '#dcddde' : '#2c3e50',
-                                                      position: 'relative'
-                                                    }}
-                                                    onClick={() => {
-                                                      setTempMoneyValue('');
-                                                      setEditingMoneyField(fieldKeyEspecie);
-                                                    }}
-                                                    onMouseEnter={(e) => {
-                                                      if (editingMoneyField !== fieldKeyEspecie) {
-                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
-                                                      }
-                                                    }}
-                                                    onMouseLeave={(e) => {
-                                                      if (editingMoneyField !== fieldKeyEspecie) {
-                                                        e.target.style.backgroundColor = 'transparent';
-                                                      }
-                                                    }}
-                                                  >
-                                                    {simbolo}{(moeda.dinheiroEspecie || 0).toFixed(2)}
-                                                  </span>
-                                                  {editingMoneyField === fieldKeyEspecie && (
-                                                    <div className="life-edit-popup" style={{ top: '100%', right: 0, marginTop: '0.5rem', zIndex: 1000 }}>
-                                                      <div className="life-current-display">
-                                                        <span className="current-label">ESPÉCIE ATUAL</span>
-                                                        <span className="current-value">{(moeda.dinheiroEspecie || 0).toFixed(2)}</span>
-                                                      </div>
-                                                      <input
-                                                        type="text"
-                                                        className="life-operation-input"
-                                                        value={tempMoneyValue}
-                                                        onChange={(e) => setTempMoneyValue(e.target.value)}
-                                                        onBlur={() => {
-                                                          const input = tempMoneyValue.trim();
-                                                          if (input) {
-                                                            const currentValue = moeda.dinheiroEspecie || 0;
-                                                            if (input.startsWith('+')) {
-                                                              const value = parseFloat(input.substring(1)) || 0;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue + value));
-                                                            } else if (input.startsWith('-')) {
-                                                              const value = parseFloat(input.substring(1)) || 0;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue - value));
-                                                            } else if (input.startsWith('*')) {
-                                                              const value = parseFloat(input.substring(1)) || 1;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue * value));
-                                                            } else if (input.startsWith('/')) {
-                                                              const value = parseFloat(input.substring(1)) || 1;
-                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue / value));
-                                                            } else {
-                                                              const value = parseFloat(input);
-                                                              if (!isNaN(value)) {
-                                                                handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, value));
-                                                              }
+                                                  {editingMoneyField === fieldKeyEspecie ? (
+                                                    <input
+                                                      type="text"
+                                                      className="life-operation-input"
+                                                      value={tempMoneyValue}
+                                                      onChange={(e) => setTempMoneyValue(e.target.value)}
+                                                      onBlur={() => {
+                                                        const input = tempMoneyValue.trim();
+                                                        if (input) {
+                                                          const currentValue = moeda.dinheiroEspecie || 0;
+                                                          if (input.startsWith('+')) {
+                                                            const value = parseFloat(input.substring(1)) || 0;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue + value));
+                                                          } else if (input.startsWith('-')) {
+                                                            const value = parseFloat(input.substring(1)) || 0;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue - value));
+                                                          } else if (input.startsWith('*')) {
+                                                            const value = parseFloat(input.substring(1)) || 1;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue * value));
+                                                          } else if (input.startsWith('/')) {
+                                                            const value = parseFloat(input.substring(1)) || 1;
+                                                            handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue / value));
+                                                          } else {
+                                                            const value = parseFloat(input);
+                                                            if (!isNaN(value)) {
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, value));
                                                             }
                                                           }
+                                                        }
+                                                        setEditingMoneyField(null);
+                                                      }}
+                                                      onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                          e.target.blur();
+                                                        } else if (e.key === 'Escape') {
                                                           setEditingMoneyField(null);
-                                                        }}
-                                                        onKeyDown={(e) => {
-                                                          if (e.key === 'Enter') {
-                                                            e.target.blur();
-                                                          } else if (e.key === 'Escape') {
-                                                            setEditingMoneyField(null);
-                                                          }
-                                                        }}
-                                                        placeholder="+100, -50, 500, *2, /2"
-                                                        autoFocus
-                                                      />
-                                                      <div className="life-edit-hint">Digite +/-/*// ou valor</div>
-                                                    </div>
+                                                        }
+                                                      }}
+                                                      placeholder={formatMoney(moeda.dinheiroEspecie || 0)}
+                                                      autoFocus
+                                                      style={{
+                                                        width: '120px',
+                                                        textAlign: 'right',
+                                                        fontSize: '0.85rem',
+                                                        padding: '0.25rem',
+                                                        border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                                        borderRadius: '4px',
+                                                        background: darkMode ? '#404245' : '#fff',
+                                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                                        outline: 'none'
+                                                      }}
+                                                    />
+                                                  ) : (
+                                                    <span 
+                                                      style={{ 
+                                                        cursor: 'pointer',
+                                                        userSelect: 'none',
+                                                        padding: '0.125rem 0.25rem',
+                                                        borderRadius: '4px',
+                                                        transition: 'background 0.2s',
+                                                        backgroundColor: 'transparent',
+                                                        fontWeight: '600',
+                                                        color: darkMode ? '#dcddde' : '#2c3e50'
+                                                      }}
+                                                      onClick={() => {
+                                                        setTempMoneyValue('');
+                                                        setEditingMoneyField(fieldKeyEspecie);
+                                                      }}
+                                                      onMouseEnter={(e) => {
+                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
+                                                      }}
+                                                      onMouseLeave={(e) => {
+                                                        e.target.style.backgroundColor = 'transparent';
+                                                      }}
+                                                    >
+                                                      {simbolo}{formatMoney(moeda.dinheiroEspecie || 0)}
+                                                    </span>
                                                   )}
                                                 </div>
                                               )}
@@ -4525,18 +4774,18 @@ function App() {
                                                 alignItems: 'center',
                                                 marginTop: '0.5rem',
                                                 paddingTop: '0.5rem',
-                                                borderTop: `2px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                                                borderTop: `2px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
                                                 fontWeight: '700',
                                                 fontSize: '0.95rem'
                                               }}>
                                                 <span style={{ color: darkMode ? '#7289da' : '#5b9bd5' }}>TOTAL</span>
-                                                <span style={{ color: darkMode ? '#7289da' : '#5b9bd5' }}>{simbolo}{total.toFixed(2)}</span>
+                                                <span style={{ color: darkMode ? '#7289da' : '#5b9bd5' }}>{simbolo}{formatMoney(total)}</span>
                                               </div>
                                             </div>
                                           </div>
                                         );
                                       })}
-                                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}` }}>
+                                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}` }}>
                                         <button
                                           onClick={() => handleEditInventoryItem(item)}
                                           style={{
@@ -4605,9 +4854,9 @@ function App() {
                                   )}
                                   {item.category === 'dinheiro' && !item.moedas && (
                                     <>
-                                      {item.debito > 0 && ` | Débito: ${item.debito.toFixed(2)}`}
-                                      {item.credito > 0 && ` | Crédito: ${item.credito.toFixed(2)}`}
-                                      {item.dinheiroEspecie > 0 && ` | Espécie: ${item.dinheiroEspecie.toFixed(2)}`}
+                                      {item.debito > 0 && ` | Débito: ${formatMoney(item.debito)}`}
+                                      {item.credito > 0 && ` | Crédito: ${formatMoney(item.credito)}`}
+                                      {item.dinheiroEspecie > 0 && ` | Espécie: ${formatMoney(item.dinheiroEspecie)}`}
                                     </>
                                   )}
                                   {item.category !== 'dinheiro' && ':'}
@@ -4636,7 +4885,7 @@ function App() {
                                         right: 0,
                                         marginTop: '0.5rem',
                                         padding: '0.75rem',
-                                        background: darkMode ? '#2f3136' : '#fff',
+                                        background: darkMode ? '#3a3c40' : '#fff',
                                         border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
                                         borderRadius: '8px',
                                         boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -4650,7 +4899,7 @@ function App() {
                                         gap: '0.5rem',
                                         marginBottom: '0.5rem',
                                         paddingBottom: '0.5rem',
-                                        borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
+                                        borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`
                                       }}>
                                         <span style={{ 
                                           fontSize: '0.7rem', 
@@ -4715,9 +4964,9 @@ function App() {
                                           width: '100%',
                                           padding: '0.5rem',
                                           fontSize: '0.9rem',
-                                          border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                                          border: `1px solid ${darkMode ? '#4a4d52' : '#d1dce5'}`,
                                           borderRadius: '4px',
-                                          background: darkMode ? '#36393f' : '#fff',
+                                          background: darkMode ? '#404245' : '#fff',
                                           color: darkMode ? '#dcddde' : '#2c3e50',
                                           outline: 'none'
                                         }}
@@ -4733,28 +4982,6 @@ function App() {
                                   )}
                                 </div>
                               </div>
-                              {item.category === 'carregadores' && loadedQty !== null ? (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', justifyContent: 'flex-start', paddingLeft: '0' }}>
-                                  {partialAmmo ? (
-                                    <span className="discord-attr-value" style={{ color: darkMode ? '#faa61a' : '#e67e22', fontWeight: '600' }}>
-                                      Parcial: {partialAmmo}/{item.magazineCapacity}
-                                    </span>
-                                  ) : (
-                                    <>
-                                      <span className="discord-attr-value">Total: ×{item.quantity}</span>
-                                      <span style={{ color: darkMode ? '#43b581' : '#27ae60', fontWeight: '600', fontSize: '0.75rem' }}>
-                                        Carregados: {loadedQty}
-                                      </span>
-                                      <span style={{ color: darkMode ? '#faa61a' : '#e67e22', fontWeight: '600', fontSize: '0.75rem' }}>
-                                        Parciais: {partialQty || 0}
-                                      </span>
-                                      <span style={{ color: darkMode ? '#faa61a' : '#e67e22', fontWeight: '600', fontSize: '0.75rem' }}>
-                                        Vazios: {emptyQty}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              ) : null}
                             </div>
                             {item.category !== 'dinheiro' && (
                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -4819,38 +5046,318 @@ function App() {
                                 </svg>
                                 Excluir
                             </button>
+                            <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowItemInfo(showItemInfo === item.id ? null : item.id);
+                                }}
+                                style={{
+                                  padding: '0.25rem 0.5rem',
+                                  background: showItemInfo === item.id ? (darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.2)') : 'rgba(114, 137, 218, 0.2)',
+                                  border: '1px solid rgba(114, 137, 218, 0.3)',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  color: '#7289da',
+                                  fontSize: '0.75rem',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.25rem',
+                                  transition: 'all 0.2s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (showItemInfo !== item.id) {
+                                    e.target.style.background = 'rgba(114, 137, 218, 0.3)';
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (showItemInfo !== item.id) {
+                                    e.target.style.background = 'rgba(114, 137, 218, 0.2)';
+                                  }
+                                }}
+                                title="Ver informações do item"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                                  <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                </svg>
+                                Info
+                            </button>
                           </div>
                             )}
-                            {item.linkedWeapon && (
-                              <div className="discord-attribute" style={{ marginTop: '0.25rem', marginLeft: '1rem', fontSize: '0.6rem' }}>
-                                <span className="discord-attr-name" style={{ fontSize: '0.6rem' }}>Arma:</span>
-                                <span className="discord-attr-value" style={{ fontSize: '0.6rem' }}>
-                                  {inventory.find(w => w.id === item.linkedWeapon)?.name || 'N/A'}
-                                </span>
-                        </div>
-                            )}
-                            {(() => {
-                              const ammoIds = Array.isArray(item.linkedAmmunitions) 
-                                ? item.linkedAmmunitions 
-                                : (item.linkedAmmunition ? [item.linkedAmmunition] : []);
-                              if (ammoIds.length === 0) return null;
-                              const ammos = inventory.filter(a => ammoIds.includes(a.id));
-                              return (
-                                <div className="discord-attribute" style={{ marginTop: '0.25rem', marginLeft: '1rem', fontSize: '0.6rem' }}>
-                                  <span className="discord-attr-name" style={{ fontSize: '0.6rem' }}>Munições:</span>
-                                  <span className="discord-attr-value" style={{ fontSize: '0.6rem' }}>
-                                    {ammos.map(a => `${a.name} (${a.ammunitionType})`).join(', ') || 'N/A'}
-                                  </span>
-                      </div>
-                              );
-                            })()}
-                            {item.linkedMagazine && (
-                              <div className="discord-attribute" style={{ marginTop: '0.25rem', marginLeft: '1rem', fontSize: '0.6rem' }}>
-                                <span className="discord-attr-name" style={{ fontSize: '0.6rem' }}>Carregador:</span>
-                                <span className="discord-attr-value" style={{ fontSize: '0.6rem' }}>
-                                  {inventory.find(m => m.id === item.linkedMagazine)?.name || 'N/A'}
-                                </span>
-                  </div>
+                            {showItemInfo === item.id && (
+                              <div 
+                                style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  left: 0,
+                                  right: 0,
+                                  marginTop: '0.5rem',
+                                  padding: '1rem',
+                                  background: darkMode ? '#3a3c40' : '#ffffff',
+                                  border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                  borderRadius: '8px',
+                                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                  zIndex: 1000,
+                                  minWidth: '250px',
+                                  maxWidth: '400px'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div style={{ 
+                                  display: 'flex', 
+                                  justifyContent: 'space-between', 
+                                  alignItems: 'center',
+                                  marginBottom: '0.75rem',
+                                  paddingBottom: '0.75rem',
+                                  borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`
+                                }}>
+                                  <h3 style={{ 
+                                    margin: 0, 
+                                    fontSize: '1rem', 
+                                    fontWeight: '700',
+                                    color: darkMode ? '#7289da' : '#5b9bd5'
+                                  }}>
+                                    Informações do Item
+                                  </h3>
+                                  <button
+                                    onClick={() => setShowItemInfo(null)}
+                                    style={{
+                                      padding: '0.25rem',
+                                      background: 'transparent',
+                                      border: 'none',
+                                      cursor: 'pointer',
+                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      borderRadius: '4px',
+                                      transition: 'background 0.2s ease'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                      e.target.style.background = darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.target.style.background = 'transparent';
+                                    }}
+                                  >
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                      <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                      <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                                    </svg>
+                                  </button>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                  <div>
+                                    <span style={{ 
+                                      fontSize: '0.75rem', 
+                                      fontWeight: '600', 
+                                      color: darkMode ? '#7289da' : '#5b9bd5',
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.5px'
+                                    }}>
+                                      Nome:
+                                    </span>
+                                    <div style={{ 
+                                      fontSize: '0.9rem', 
+                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                      marginTop: '0.25rem'
+                                    }}>
+                                      {item.name}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span style={{ 
+                                      fontSize: '0.75rem', 
+                                      fontWeight: '600', 
+                                      color: darkMode ? '#7289da' : '#5b9bd5',
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.5px'
+                                    }}>
+                                      Categoria:
+                                    </span>
+                                    <div style={{ 
+                                      fontSize: '0.9rem', 
+                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                      marginTop: '0.25rem'
+                                    }}>
+                                      {item.category === 'armas' ? 'Armas' : 
+                                       item.category === 'municoes' ? 'Munições' :
+                                       item.category === 'carregadores' ? 'Carregadores' :
+                                       item.category === 'armaduras' ? 'Armaduras' :
+                                       item.category === 'consumiveis' ? 'Consumíveis' :
+                                       item.category === 'magicos' ? 'Itens Mágicos' :
+                                       item.category === 'dinheiro' ? 'Dinheiro' : 'Geral'}
+                                    </div>
+                                  </div>
+                                  {item.category === 'armas' && item.weaponType && (
+                                    <div>
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: '600', 
+                                        color: darkMode ? '#7289da' : '#5b9bd5',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        Tipo de Arma:
+                                      </span>
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                        marginTop: '0.25rem'
+                                      }}>
+                                        {item.weaponType === 'fogo' ? 'Fogo' : item.weaponType === 'branca' ? 'Branca' : item.weaponType}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {(() => {
+                                    const ammoIds = Array.isArray(item.linkedAmmunitions) 
+                                      ? item.linkedAmmunitions 
+                                      : (item.linkedAmmunition ? [item.linkedAmmunition] : []);
+                                    if (ammoIds.length > 0) {
+                                      const ammos = inventory.filter(a => ammoIds.includes(a.id));
+                                      return (
+                                        <div>
+                                          <span style={{ 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '600', 
+                                            color: darkMode ? '#7289da' : '#5b9bd5',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                          }}>
+                                            Munições:
+                                          </span>
+                                          <div style={{ 
+                                            fontSize: '0.9rem', 
+                                            color: darkMode ? '#dcddde' : '#2c3e50',
+                                            marginTop: '0.25rem'
+                                          }}>
+                                            {ammos.map(a => `${a.name} (${a.ammunitionType})`).join(', ') || 'N/A'}
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
+                                  {item.linkedMagazine && (
+                                    <div>
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: '600', 
+                                        color: darkMode ? '#7289da' : '#5b9bd5',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        Carregador:
+                                      </span>
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                        marginTop: '0.25rem'
+                                      }}>
+                                        {inventory.find(m => m.id === item.linkedMagazine)?.name || 'N/A'}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {item.linkedWeapon && (
+                                    <div>
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: '600', 
+                                        color: darkMode ? '#7289da' : '#5b9bd5',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        Arma Compatível:
+                                      </span>
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                        marginTop: '0.25rem'
+                                      }}>
+                                        {inventory.find(w => w.id === item.linkedWeapon)?.name || 'N/A'}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {item.category === 'municoes' && item.ammunitionType && (
+                                    <div>
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: '600', 
+                                        color: darkMode ? '#7289da' : '#5b9bd5',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        Tipo de Munição:
+                                      </span>
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                        marginTop: '0.25rem'
+                                      }}>
+                                        {item.ammunitionType}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {item.category === 'carregadores' && item.ammunitionType && (
+                                    <div>
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: '600', 
+                                        color: darkMode ? '#7289da' : '#5b9bd5',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        Tipo de Munição Aceita:
+                                      </span>
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                        marginTop: '0.25rem'
+                                      }}>
+                                        {item.ammunitionType}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {item.category === 'carregadores' && item.magazineCapacity && (
+                                    <div>
+                                      <span style={{ 
+                                        fontSize: '0.75rem', 
+                                        fontWeight: '600', 
+                                        color: darkMode ? '#7289da' : '#5b9bd5',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px'
+                                      }}>
+                                        Capacidade:
+                                      </span>
+                                      <div style={{ 
+                                        fontSize: '0.9rem', 
+                                        color: darkMode ? '#dcddde' : '#2c3e50',
+                                        marginTop: '0.25rem'
+                                      }}>
+                                        {item.magazineCapacity} munições
+                                      </div>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span style={{ 
+                                      fontSize: '0.75rem', 
+                                      fontWeight: '600', 
+                                      color: darkMode ? '#7289da' : '#5b9bd5',
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.5px'
+                                    }}>
+                                      Quantidade:
+                                    </span>
+                                    <div style={{ 
+                                      fontSize: '0.9rem', 
+                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                      marginTop: '0.25rem'
+                                    }}>
+                                      ×{item.quantity}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             )}
                 </div>
                         );
@@ -4976,7 +5483,7 @@ function App() {
                                 setTempMagazineValue('');
                                 setEditingPrimaryMagazine(true);
                               } else {
-                                alert('⚠️ Selecione um carregador primeiro!');
+                                showAlert('Selecione um carregador primeiro!', 'warning');
                               }
                             }}
                             title={currentPrimaryMagazineInfo ? 'Clique para editar' : 'Selecione um carregador primeiro'}
@@ -4991,7 +5498,7 @@ function App() {
                                 right: 0,
                                 marginTop: '0.5rem',
                                 padding: '0.75rem',
-                                background: darkMode ? '#2f3136' : '#fff',
+                                background: darkMode ? '#3a3c40' : '#fff',
                                 border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
                                 borderRadius: '8px',
                                 boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -5005,7 +5512,7 @@ function App() {
                                 gap: '0.5rem',
                                 marginBottom: '0.5rem',
                                 paddingBottom: '0.5rem',
-                                borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
+                                borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`
                               }}>
                                 <span style={{
                                   fontSize: '0.7rem',
@@ -5089,9 +5596,9 @@ function App() {
                                   width: '100%',
                                   padding: '0.5rem',
                                   fontSize: '0.9rem',
-                                  border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                                  border: `1px solid ${darkMode ? '#4a4d52' : '#d1dce5'}`,
                                   borderRadius: '4px',
-                                  background: darkMode ? '#36393f' : '#fff',
+                                  background: darkMode ? '#404245' : '#fff',
                                   color: darkMode ? '#dcddde' : '#2c3e50',
                                   outline: 'none'
                                 }}
@@ -5113,7 +5620,7 @@ function App() {
                         fontSize: '0.65rem', 
                         color: darkMode ? '#72767d' : '#7f8c8d',
                         padding: '0.125rem 0',
-                        borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                        borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
                         paddingBottom: '0.25rem'
                       }}>
                         <strong>Tipo:</strong> {primaryWeapon.weaponType === 'fogo' ? 'Arma de Fogo' : primaryWeapon.weaponType === 'corpo-a-corpo' ? 'Arma Branca Corpo a Corpo' : primaryWeapon.weaponType}
@@ -5151,9 +5658,9 @@ function App() {
                             style={{
                               padding: '0.375rem',
                               fontSize: '0.7rem',
-                              border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                              border: `1px solid ${darkMode ? '#4a4d52' : '#d1dce5'}`,
                               borderRadius: '4px',
-                              background: darkMode ? '#36393f' : '#fff',
+                              background: darkMode ? '#404245' : '#fff',
                               color: darkMode ? '#dcddde' : '#2c3e50',
                               outline: 'none',
                               cursor: 'pointer'
@@ -5174,7 +5681,7 @@ function App() {
                                 className="btn-reload"
                                 onClick={() => {
                                   if (!currentPrimaryMagazineInfo) {
-                                    alert('⚠️ Selecione um carregador primeiro!');
+                                    showAlert('Selecione um carregador primeiro!', 'warning');
                                     return;
                                   }
                                   handleReloadWeapon(true);
@@ -5308,7 +5815,7 @@ function App() {
                                 setTempMagazineValue('');
                                 setEditingSecondaryMagazine(true);
                               } else {
-                                alert('⚠️ Selecione um carregador primeiro!');
+                                showAlert('Selecione um carregador primeiro!', 'warning');
                               }
                             }}
                             title={currentSecondaryMagazineInfo ? 'Clique para editar' : 'Selecione um carregador primeiro'}
@@ -5323,7 +5830,7 @@ function App() {
                                   right: 0,
                                   marginTop: '0.5rem',
                                   padding: '0.75rem',
-                                  background: darkMode ? '#2f3136' : '#fff',
+                                  background: darkMode ? '#3a3c40' : '#fff',
                                   border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
                                   borderRadius: '8px',
                                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
@@ -5337,7 +5844,7 @@ function App() {
                                   gap: '0.5rem',
                                   marginBottom: '0.5rem',
                                   paddingBottom: '0.5rem',
-                                  borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
+                                  borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`
                                 }}>
                                   <span style={{
                                     fontSize: '0.7rem',
@@ -5420,9 +5927,9 @@ function App() {
                                     width: '100%',
                                     padding: '0.5rem',
                                     fontSize: '0.9rem',
-                                    border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                                    border: `1px solid ${darkMode ? '#4a4d52' : '#d1dce5'}`,
                                     borderRadius: '4px',
-                                    background: darkMode ? '#36393f' : '#fff',
+                                    background: darkMode ? '#404245' : '#fff',
                                     color: darkMode ? '#dcddde' : '#2c3e50',
                                     outline: 'none'
                                   }}
@@ -5444,7 +5951,7 @@ function App() {
                         fontSize: '0.65rem', 
                         color: darkMode ? '#72767d' : '#7f8c8d',
                         padding: '0.125rem 0',
-                        borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                        borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
                         paddingBottom: '0.25rem'
                       }}>
                         <strong>Tipo:</strong> {secondaryWeapon.weaponType === 'fogo' ? 'Arma de Fogo' : secondaryWeapon.weaponType === 'corpo-a-corpo' ? 'Arma Branca Corpo a Corpo' : secondaryWeapon.weaponType}
@@ -5482,9 +5989,9 @@ function App() {
                             style={{
                               padding: '0.375rem',
                               fontSize: '0.7rem',
-                              border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                              border: `1px solid ${darkMode ? '#4a4d52' : '#d1dce5'}`,
                               borderRadius: '4px',
-                              background: darkMode ? '#36393f' : '#fff',
+                              background: darkMode ? '#404245' : '#fff',
                               color: darkMode ? '#dcddde' : '#2c3e50',
                               outline: 'none',
                               cursor: 'pointer'
@@ -5505,7 +6012,7 @@ function App() {
                                 className="btn-reload"
                                 onClick={() => {
                                   if (!currentSecondaryMagazineInfo) {
-                                    alert('⚠️ Selecione um carregador primeiro!');
+                                    showAlert('Selecione um carregador primeiro!', 'warning');
                                     return;
                                   }
                                   handleReloadWeapon(false);
@@ -5543,6 +6050,11 @@ function App() {
           </div>
         </div>
       </div>
+      <Alert 
+        message={alert.message} 
+        type={alert.type} 
+        onClose={() => setAlert({ message: null, type: 'info' })} 
+      />
     </div>
   );
 }

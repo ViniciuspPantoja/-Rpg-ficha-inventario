@@ -182,4 +182,4 @@ Localizado na primeira coluna, abaixo do formulário:
 
 ## 📄 Licença
 
-Este projeto é de código aberto e está disponível sob a licença MIT.
+Este projeto é de código aberto e do tipo licença pessoal: Permite o uso individual e não comercial, sem possibilidade de compartilhamento ou transferência para terceiros.
