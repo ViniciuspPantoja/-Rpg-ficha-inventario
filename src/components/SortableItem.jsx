@@ -71,8 +71,8 @@ export function SortableItem({ id, itemType, itemKey, itemValue, onDelete, onUpd
     <div ref={setNodeRef} style={style} className="sortable-item">
       <div className="drag-handle" {...attributes} {...listeners}>
         <svg
-          width="20"
-          height="20"
+          width="14"
+          height="14"
           viewBox="0 0 20 20"
           fill="currentColor"
         >
@@ -118,7 +118,7 @@ export function SortableItem({ id, itemType, itemKey, itemValue, onDelete, onUpd
               onClick={handleSave}
               title="Salvar"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </button>
@@ -127,7 +127,7 @@ export function SortableItem({ id, itemType, itemKey, itemValue, onDelete, onUpd
               onClick={handleCancel}
               title="Cancelar"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                 <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
@@ -139,7 +139,7 @@ export function SortableItem({ id, itemType, itemKey, itemValue, onDelete, onUpd
             onClick={handleEdit}
             title="Editar valor"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
@@ -150,7 +150,7 @@ export function SortableItem({ id, itemType, itemKey, itemValue, onDelete, onUpd
         onClick={() => onDelete(id)}
         title="Remover item"
       >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
       </button>

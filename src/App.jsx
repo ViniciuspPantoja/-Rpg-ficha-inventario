@@ -41,6 +41,26 @@ function App() {
   const [weaponType, setWeaponType] = useState('');
   const [ammunitionType, setAmmunitionType] = useState('');
   const [magazineCapacity, setMagazineCapacity] = useState('');
+  const [debito, setDebito] = useState(0);
+  const [credito, setCredito] = useState(0);
+  const [dinheiroEspecie, setDinheiroEspecie] = useState(0);
+  const [moedas, setMoedas] = useState([{ id: Date.now().toString(), tipo: 'BRL', simbolo: 'R$', debito: 0, credito: 0, dinheiroEspecie: 0 }]);
+  
+  // Lista de moedas comuns e seus símbolos
+  const moedasDisponiveis = [
+    { codigo: 'BRL', nome: 'Real Brasileiro', simbolo: 'R$' },
+    { codigo: 'USD', nome: 'Dólar Americano', simbolo: '$' },
+    { codigo: 'EUR', nome: 'Euro', simbolo: '€' },
+    { codigo: 'GBP', nome: 'Libra Esterlina', simbolo: '£' },
+    { codigo: 'JPY', nome: 'Iene Japonês', simbolo: '¥' },
+    { codigo: 'CNY', nome: 'Yuan Chinês', simbolo: '¥' },
+    { codigo: 'ARS', nome: 'Peso Argentino', simbolo: '$' },
+    { codigo: 'CLP', nome: 'Peso Chileno', simbolo: '$' },
+    { codigo: 'MXN', nome: 'Peso Mexicano', simbolo: '$' },
+    { codigo: 'BTC', nome: 'Bitcoin', simbolo: '₿' },
+    { codigo: 'ETH', nome: 'Ethereum', simbolo: 'Ξ' },
+    { codigo: 'CUSTOM', nome: 'Personalizada', simbolo: '' },
+  ];
   const [linkedAmmunitions, setLinkedAmmunitions] = useState([]); // Array de IDs de munições compatíveis
   const [linkedMagazine, setLinkedMagazine] = useState('');
   const [linkedWeapon, setLinkedWeapon] = useState('');
@@ -52,6 +72,8 @@ function App() {
   const [editingPrimaryMagazine, setEditingPrimaryMagazine] = useState(false);
   const [editingSecondaryMagazine, setEditingSecondaryMagazine] = useState(false);
   const [tempMagazineValue, setTempMagazineValue] = useState('');
+  const [editingMoneyField, setEditingMoneyField] = useState(null); // Formato: `${itemId}-${moedaId}-${tipo}` (debito, credito, especie)
+  const [tempMoneyValue, setTempMoneyValue] = useState('');
   const [selectedPrimaryMagazine, setSelectedPrimaryMagazine] = useState('');
   const [selectedSecondaryMagazine, setSelectedSecondaryMagazine] = useState('');
   const [activeInventoryTab, setActiveInventoryTab] = useState('cadastrar');
@@ -917,7 +939,7 @@ function App() {
       return;
     }
     
-    if (!itemName.trim()) {
+    if (itemCategory !== 'dinheiro' && !itemName.trim()) {
       alert(itemCategory === 'municoes' ? '⚠️ Por favor, preencha o tipo da munição.' : '⚠️ Por favor, preencha o nome do item.');
       return;
     }
@@ -943,10 +965,17 @@ function App() {
       alert('⚠️ Por favor, preencha o tipo de munição que o carregador aceita.');
       return;
     }
+    if (itemCategory === 'dinheiro') {
+      const hasValue = moedas.some(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0);
+      if (!hasValue) {
+        alert('⚠️ Por favor, preencha pelo menos um dos campos de dinheiro (Débito, Crédito ou Dinheiro em Espécie) em pelo menos uma moeda.');
+        return;
+      }
+    }
 
     // Criar chave única para identificar itens duplicados
     const itemKey = JSON.stringify({
-      name: itemName.trim(),
+      name: itemCategory === 'dinheiro' ? 'Dinheiro' : itemName.trim(),
       category: itemCategory,
       weaponType: itemCategory === 'armas' ? weaponType : null,
       ammunitionType: itemCategory === 'municoes' ? ammunitionType.trim() : (itemCategory === 'carregadores' ? ammunitionType.trim() : null),
@@ -956,7 +985,7 @@ function App() {
     // Verificar se já existe um item com as mesmas características
     const existingItemIndex = inventory.findIndex(item => {
       const existingKey = JSON.stringify({
-        name: item.name,
+        name: item.category === 'dinheiro' ? 'Dinheiro' : item.name,
         category: item.category,
         weaponType: item.weaponType || null,
         ammunitionType: item.category === 'municoes' ? (item.ammunitionType || null) : (item.category === 'carregadores' ? (item.ammunitionType || null) : null),
@@ -994,7 +1023,7 @@ function App() {
       // Criar novo item
       const newInventoryItem = {
         id: Date.now().toString(),
-        name: itemName.trim(),
+        name: itemCategory === 'dinheiro' ? 'Dinheiro' : itemName.trim(),
         quantity: itemQuantity,
         category: itemCategory,
         ...(itemCategory === 'armas' && weaponType && { weaponType }),
@@ -1018,6 +1047,9 @@ function App() {
             currentAmmo: 0
           }))
         }),
+        ...(itemCategory === 'dinheiro' && {
+          moedas: moedas.filter(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0),
+        }),
       };
       setInventory([...inventory, newInventoryItem]);
       alert(`✅ Item cadastrado com sucesso!`);
@@ -1034,6 +1066,10 @@ function App() {
     setSelectedAmmunitionToAdd('');
     setLinkedMagazine('');
     setLinkedWeapon('');
+    setDebito(0);
+    setCredito(0);
+    setDinheiroEspecie(0);
+    setMoedas([{ id: Date.now().toString(), tipo: 'BRL', simbolo: 'R$', debito: 0, credito: 0, dinheiroEspecie: 0 }]);
   };
 
   const handleDeleteInventoryItem = (id) => {
@@ -2286,6 +2322,17 @@ function App() {
 
   const handleEditInventoryItem = (item) => {
     setEditingItem(item);
+    if (item.category === 'dinheiro' && item.moedas) {
+      setMoedas(item.moedas.length > 0 ? item.moedas : [{ id: Date.now().toString(), tipo: 'BRL', simbolo: 'R$', debito: 0, credito: 0, dinheiroEspecie: 0 }]);
+    } else if (item.category === 'dinheiro') {
+      // Compatibilidade com sistema antigo
+      setMoedas([{ id: Date.now().toString(), tipo: 'BRL', simbolo: 'R$', debito: item.debito || 0, credito: item.credito || 0, dinheiroEspecie: item.dinheiroEspecie || 0 }]);
+    } else {
+      setDebito(item.debito || 0);
+      setCredito(item.credito || 0);
+      setDinheiroEspecie(item.dinheiroEspecie || 0);
+      setMoedas([{ id: Date.now().toString(), tipo: 'BRL', simbolo: 'R$', debito: 0, credito: 0, dinheiroEspecie: 0 }]);
+    }
     setItemName(item.name);
     setItemQuantity(item.quantity);
     setItemCategory(item.category);
@@ -2310,7 +2357,7 @@ function App() {
 
   const handleUpdateInventoryItem = (e) => {
     e.preventDefault();
-    if (itemName.trim() && editingItem) {
+    if ((itemCategory === 'dinheiro' || itemName.trim()) && editingItem) {
       if (itemCategory === 'armas' && !weaponType) {
         alert('⚠️ Por favor, selecione o tipo de arma.');
         return;
@@ -2323,6 +2370,13 @@ function App() {
         alert('⚠️ Por favor, preencha o tipo de munição.');
         return;
       }
+      if (itemCategory === 'dinheiro') {
+        const hasValue = moedas.some(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0);
+        if (!hasValue) {
+          alert('⚠️ Por favor, preencha pelo menos um dos campos de dinheiro (Débito, Crédito ou Dinheiro em Espécie) em pelo menos uma moeda.');
+          return;
+        }
+      }
       if (itemCategory === 'carregadores' && !magazineCapacity.trim()) {
         alert('⚠️ Por favor, preencha a capacidade do carregador.');
         return;
@@ -2334,7 +2388,7 @@ function App() {
 
       const updatedItem = {
         ...editingItem,
-        name: itemName.trim(),
+        name: itemCategory === 'dinheiro' ? 'Dinheiro' : itemName.trim(),
         quantity: itemQuantity,
         category: itemCategory,
         ...(itemCategory === 'armas' && weaponType && { weaponType }),
@@ -2351,6 +2405,9 @@ function App() {
           ammunitionType: ammunitionType.trim(), // Tipo de munição que o carregador aceita
           linkedWeapon: linkedWeapon || null,
           loadedQuantity: editingItem.loadedQuantity !== undefined ? editingItem.loadedQuantity : 0,
+        }),
+        ...(itemCategory === 'dinheiro' && {
+          moedas: moedas.filter(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0),
         }),
       };
 
@@ -2372,7 +2429,31 @@ function App() {
       setSelectedAmmunitionToAdd('');
       setLinkedMagazine('');
       setLinkedWeapon('');
+      setDebito(0);
+      setCredito(0);
+      setDinheiroEspecie(0);
     }
+  };
+
+  const handleUpdateMoneyField = (itemId, moedaId, fieldType, newValue) => {
+    setInventory(inventory.map(item => {
+      if (item.id === itemId && item.category === 'dinheiro' && item.moedas) {
+        const updatedMoedas = item.moedas.map(moeda => {
+          if (moeda.id === moedaId) {
+            return {
+              ...moeda,
+              [fieldType]: newValue
+            };
+          }
+          return moeda;
+        });
+        return {
+          ...item,
+          moedas: updatedMoedas
+        };
+      }
+      return item;
+    }));
   };
 
   // Agrupar itens por tipo
@@ -2680,36 +2761,13 @@ function App() {
                 color: darkMode ? '#7289da' : '#5b9bd5',
                 transition: 'color 0.3s ease'
               }}>
-                <svg className="status-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Ficha Status
-              </h2>
-              
-              {/* Tabs de Status e Armamentos */}
-              <div className="status-tabs">
-              <button
-                className={`status-tab ${activeStatusTab === 'status' ? 'active' : ''}`}
-                onClick={() => setActiveStatusTab('status')}
-              >
-                Status
-              </button>
-              <button
-                className={`status-tab ${activeStatusTab === 'weapons' ? 'active' : ''}`}
-                onClick={() => setActiveStatusTab('weapons')}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2 10h20M2 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  <rect x="3" y="8" width="18" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                  <rect x="5" y="10" width="14" height="4" rx="0.5" fill="currentColor" opacity="0.3"/>
-                  <path d="M8 6h8M8 18h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                </svg>
-                Armamentos
-              </button>
-            </div>
-
-            {activeStatusTab === 'status' && (
+              <svg className="status-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Ficha Status
+            </h2>
+            
+            {/* Seção de Status - apenas Status agora */}
             <div className="life-content">
               {/* Vida */}
               <div className="stat-block">
@@ -2989,711 +3047,7 @@ function App() {
                 </div>
               </div>
             </div>
-            )}
-
-            {activeStatusTab === 'weapons' && (
-              <div className="weapons-content">
-                <div className="weapon-section">
-                  <div className="weapon-header">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M2 10h20M2 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <rect x="3" y="8" width="18" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                      <rect x="5" y="10" width="14" height="4" rx="0.5" fill="currentColor" opacity="0.3"/>
-                      <path d="M8 6h8M8 18h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                    </svg>
-                    <span className="weapon-label">Arma Principal</span>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', alignItems: 'center' }}>
-                      <button
-                        className="btn-change-weapon"
-                        onClick={() => setShowPrimaryWeaponList(!showPrimaryWeaponList)}
-                        title={showPrimaryWeaponList ? 'Ocultar lista' : 'Trocar arma'}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          {showPrimaryWeaponList ? (
-                            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          ) : (
-                            <path d="M3 12h18M12 3v18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          )}
-                        </svg>
-                      </button>
                   </div>
-                  </div>
-                  {showPrimaryWeaponList && (
-                  <div className="weapon-checkboxes">
-                    {inventory.filter(item => item.category === 'armas').length === 0 ? (
-                      <div style={{ padding: '1rem', textAlign: 'center', color: darkMode ? '#72767d' : '#7f8c8d', fontSize: '0.875rem' }}>
-                        Nenhuma arma cadastrada no inventário
-                      </div>
-                    ) : (
-                      inventory
-                        .filter(item => item.category === 'armas')
-                        .map(item => (
-                          <label key={item.id} className="weapon-checkbox-item">
-                            <input
-                              type="checkbox"
-                              checked={primaryWeapon?.id === item.id}
-                    onChange={(e) => {
-                                if (e.target.checked) {
-                                  // Se já havia uma arma principal selecionada e é diferente, desmarca a anterior
-                                  if (primaryWeapon && primaryWeapon.id !== item.id) {
-                                    // A nova seleção substitui a anterior
-                                  }
-                                  setPrimaryWeapon(item);
-                                  // IMPORTANTE: Arma sempre começa vazia, precisa selecionar um carregador primeiro
-                                  if (item.weaponType === 'fogo') {
-                                    // Inicia vazia (0/0) até que um carregador seja selecionado
-                                    setWeaponMagazine({ current: 0, max: 0 });
-                                    // Limpa as referências do carregador anterior
-                                    setCurrentPrimaryMagazineId(null);
-                                    setCurrentPrimaryMagazineInfo(null);
-                                    setPrevPrimaryMagazine({ current: 0, max: 0 });
-                                  } else {
-                        setWeaponMagazine({ current: 0, max: 30 });
-                      }
-                                } else {
-                                  setPrimaryWeapon(null);
-                                  setWeaponMagazine({ current: 0, max: 0 });
-                                  setCurrentPrimaryMagazineId(null);
-                                  setCurrentPrimaryMagazineInfo(null);
-                                }
-                              }}
-                            />
-                            <span>
-                              {item.name} 
-                              {item.weaponType === 'fogo' ? ' [Fogo]' : item.weaponType === 'corpo-a-corpo' ? ' [Corpo a Corpo]' : ''} 
-                              {' '}(×{item.quantity})
-                            </span>
-                          </label>
-                        ))
-                    )}
-                  </div>
-                  )}
-                  {primaryWeapon && (
-                    <div className="weapon-info">
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                      <span className="weapon-name" style={{ fontSize: '0.85rem' }}>{primaryWeapon.name}</span>
-                          {primaryWeapon.weaponType === 'fogo' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', position: 'relative' }}>
-                              <span style={{ fontSize: '0.7rem', color: darkMode ? '#7289da' : '#5b9bd5' }}>Carregador:</span>
-                              <span
-                                style={{
-                                  fontSize: '0.7rem',
-                                  color: darkMode ? '#dcddde' : '#2c3e50',
-                                  cursor: currentPrimaryMagazineInfo ? 'pointer' : 'not-allowed',
-                                  userSelect: 'none',
-                                  padding: '0.15rem 0.3rem',
-                                  borderRadius: '3px',
-                                  background: currentPrimaryMagazineInfo 
-                                    ? (darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.1)')
-                                    : (darkMode ? 'rgba(114, 137, 218, 0.05)' : 'rgba(91, 155, 213, 0.05)'),
-                                  border: `1px solid ${darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.3)'}`,
-                                  opacity: currentPrimaryMagazineInfo ? 1 : 0.5
-                                }}
-                                onClick={() => {
-                                  if (currentPrimaryMagazineInfo) {
-                                    setTempMagazineValue('');
-                                    setEditingPrimaryMagazine(true);
-                                  } else {
-                                    alert('⚠️ Selecione um carregador primeiro!');
-                                  }
-                                }}
-                                title={currentPrimaryMagazineInfo ? 'Clique para editar' : 'Selecione um carregador primeiro'}
-                              >
-                                {weaponMagazine.max > 0 ? `${weaponMagazine.current} / ${weaponMagazine.max}` : '0 / 0 (Vazio)'}
-                              </span>
-                              {editingPrimaryMagazine && (
-                                <div
-                                  style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    right: 0,
-                                    marginTop: '0.5rem',
-                                    padding: '0.75rem',
-                                    background: darkMode ? '#2f3136' : '#fff',
-                                    border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
-                                    borderRadius: '8px',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                    zIndex: 1000,
-                                    minWidth: '200px'
-                                  }}
-                                >
-                                  <div style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '0.5rem',
-                                    marginBottom: '0.5rem',
-                                    paddingBottom: '0.5rem',
-                                    borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
-                                  }}>
-                                    <span style={{
-                                      fontSize: '0.7rem',
-                                      fontWeight: '700',
-                                      color: darkMode ? '#7289da' : '#5b9bd5',
-                                      textTransform: 'uppercase',
-                                      letterSpacing: '0.5px'
-                                    }}>
-                                      ATUAL
-                                    </span>
-                                    <span style={{
-                                      fontSize: '1.2rem',
-                                      fontWeight: '600',
-                                      color: darkMode ? '#dcddde' : '#2c3e50'
-                                    }}>
-                                      {weaponMagazine.current} / {weaponMagazine.max}
-                                    </span>
-                                  </div>
-                        <input
-                                    type="text"
-                                    value={tempMagazineValue}
-                                    onChange={(e) => setTempMagazineValue(e.target.value)}
-                                    onBlur={() => {
-                                      const input = tempMagazineValue.trim();
-                                      
-                                      if (input) {
-                                        const currentCurrent = weaponMagazine.current;
-                                        const currentMax = weaponMagazine.max;
-                                        const prevCurrent = prevPrimaryMagazine.current;
-                                        
-                                        let newCurrent = currentCurrent;
-                                        
-                                        // Operação de adição (+X)
-                                        if (input.startsWith('+')) {
-                                          const value = parseInt(input.substring(1)) || 0;
-                                          newCurrent = Math.max(0, Math.min(currentMax, currentCurrent + value));
-                                          setWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
-                                        }
-                                        // Operação de subtração (-X)
-                                        else if (input.startsWith('-')) {
-                                          const value = parseInt(input.substring(1)) || 0;
-                                          newCurrent = Math.max(0, currentCurrent - value);
-                                          setWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
-                                        }
-                                        // Formato atual / máximo
-                                        else if (input.includes('/')) {
-                                          const values = input.split('/').map(v => v.trim());
-                                          if (values.length === 2) {
-                                            const current = parseInt(values[0]) || 0;
-                                            const max = parseInt(values[1]) || 1;
-                                            newCurrent = Math.max(0, Math.min(max, current));
-                                            setWeaponMagazine({
-                                              current: newCurrent,
-                                              max: Math.max(1, max)
-                                            });
-                                          }
-                                        }
-                                        // Valor absoluto (apenas atual)
-                                        else {
-                                          const value = parseInt(input);
-                                          if (!isNaN(value)) {
-                                            newCurrent = Math.max(0, Math.min(currentMax, value));
-                                            setWeaponMagazine(prev => ({
-                            ...prev,
-                                              current: newCurrent
-                                            }));
-                                          }
-                                        }
-                                        
-                                        // IMPORTANTE: A edição inline NÃO salva automaticamente no inventário
-                                        // O salvamento só acontece quando:
-                                        // 1. Recarrega a arma (handleReloadWeapon)
-                                        // 2. Seleciona um novo carregador (handleSelectMagazine)
-                                        // Apenas atualiza o estado visual do carregador na arma
-                                        
-                                        // Atualiza o prev para refletir o novo valor
-                                        setPrevPrimaryMagazine({ current: newCurrent, max: currentMax });
-                                      }
-                                      
-                                      setEditingPrimaryMagazine(false);
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.target.blur();
-                                      } else if (e.key === 'Escape') {
-                                        setEditingPrimaryMagazine(false);
-                                      }
-                                    }}
-                                    placeholder="+10, -5, 25/30, 25"
-                                    autoFocus
-                                    style={{
-                                      width: '100%',
-                                      padding: '0.5rem',
-                                      fontSize: '0.9rem',
-                                      border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
-                                      borderRadius: '4px',
-                                      background: darkMode ? '#36393f' : '#fff',
-                                      color: darkMode ? '#dcddde' : '#2c3e50',
-                                      outline: 'none'
-                                    }}
-                                  />
-                                  <div style={{
-                                    fontSize: '0.7rem',
-                                    color: darkMode ? '#72767d' : '#7f8c8d',
-                                    marginTop: '0.25rem'
-                                  }}>
-                                    Digite +/- ou valor (ex: +10, -5, 25/30)
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        {primaryWeapon.weaponType && (
-                          <div style={{ 
-                            fontSize: '0.65rem', 
-                            color: darkMode ? '#72767d' : '#7f8c8d',
-                            padding: '0.125rem 0',
-                            borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
-                            paddingBottom: '0.25rem'
-                          }}>
-                            <strong>Tipo:</strong> {primaryWeapon.weaponType === 'fogo' ? 'Arma de Fogo' : primaryWeapon.weaponType === 'corpo-a-corpo' ? 'Arma Branca Corpo a Corpo' : primaryWeapon.weaponType}
-                          </div>
-                        )}
-                        {primaryWeapon.weaponType === 'fogo' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            {/* Select para escolher carregador */}
-                            <div style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '0.125rem',
-                              marginBottom: '0.25rem'
-                            }}>
-                              <label style={{ 
-                                fontSize: '0.65rem', 
-                                fontWeight: '600',
-                                color: darkMode ? '#7289da' : '#5b9bd5'
-                              }}>
-                                Selecionar Carregador:
-                              </label>
-                              <select
-                                value={selectedPrimaryMagazine || getCurrentMagazineSelectId(primaryWeapon, currentPrimaryMagazineInfo, currentPrimaryMagazineId, weaponMagazine, true)}
-                                onChange={(e) => {
-                                  const selectedId = e.target.value;
-                                  if (selectedId) {
-                                    const allMagazines = getAllCompatibleMagazinesForSelect(primaryWeapon, true);
-                                    const selectedMagazine = allMagazines.find(m => m.id === selectedId);
-                                    if (selectedMagazine) {
-                                      handleSelectMagazine(selectedMagazine, true);
-                                    }
-                                  } else {
-                                    // Se selecionar a opção vazia, limpa o carregador
-                                    setSelectedPrimaryMagazine('');
-                                  }
-                                }}
-                                style={{
-                                  padding: '0.375rem',
-                                  fontSize: '0.7rem',
-                                  border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
-                                  borderRadius: '4px',
-                                  background: darkMode ? '#36393f' : '#fff',
-                                  color: darkMode ? '#dcddde' : '#2c3e50',
-                                  outline: 'none',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <option value="">Selecione um carregador...</option>
-                                {getAllCompatibleMagazinesForSelect(primaryWeapon, true).map(mag => (
-                                  <option key={mag.id} value={mag.id}>
-                                    {mag.displayName}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            {primaryWeapon && primaryWeapon.weaponType === 'fogo' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
-                                <div style={{ display: 'flex', flexDirection: 'row', gap: '0.375rem' }}>
-                                  <button
-                                    className="btn-reload"
-                                    onClick={() => {
-                                      if (!currentPrimaryMagazineInfo) {
-                                        alert('⚠️ Selecione um carregador primeiro!');
-                                        return;
-                                      }
-                                      handleReloadWeapon(true);
-                                    }}
-                                    disabled={!currentPrimaryMagazineInfo || weaponMagazine.max === 0 || weaponMagazine.current >= weaponMagazine.max || getAvailableMagazines(primaryWeapon).length === 0}
-                                    style={{ flex: 1 }}
-                                    title={!currentPrimaryMagazineInfo ? 'Selecione um carregador primeiro' : ''}
-                                  >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                    Recarregar Arma
-                                  </button>
-                                  <button
-                                    className="btn-load-magazines"
-                                    onClick={() => handleLoadMagazines(primaryWeapon)}
-                                    disabled={!getAvailableAmmunition(primaryWeapon) || getEmptyMagazines(primaryWeapon).length === 0}
-                                    style={{ flex: 1 }}
-                                  >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                    Carregar Carregadores
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="weapon-section">
-                  <div className="weapon-header">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M2 10h20M2 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <rect x="3" y="8" width="18" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-                      <rect x="5" y="10" width="14" height="4" rx="0.5" fill="currentColor" opacity="0.3"/>
-                      <path d="M8 6h8M8 18h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-                    </svg>
-                    <span className="weapon-label">Arma Secundária</span>
-                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', alignItems: 'center' }}>
-                      <button
-                        className="btn-change-weapon"
-                        onClick={() => setShowSecondaryWeaponList(!showSecondaryWeaponList)}
-                        title={showSecondaryWeaponList ? 'Ocultar lista' : 'Trocar arma'}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          {showSecondaryWeaponList ? (
-                            <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          ) : (
-                            <path d="M3 12h18M12 3v18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          )}
-                        </svg>
-                      </button>
-                  </div>
-                  </div>
-                  {showSecondaryWeaponList && (
-                  <div className="weapon-checkboxes">
-                    {inventory.filter(item => item.category === 'armas' && item.id !== primaryWeapon?.id).length === 0 ? (
-                      <div style={{ padding: '1rem', textAlign: 'center', color: darkMode ? '#72767d' : '#7f8c8d', fontSize: '0.875rem' }}>
-                        {primaryWeapon ? 'Todas as armas já estão selecionadas' : 'Nenhuma arma cadastrada no inventário'}
-                      </div>
-                    ) : (
-                      inventory
-                        .filter(item => item.category === 'armas' && item.id !== primaryWeapon?.id)
-                        .map(item => (
-                          <label key={item.id} className="weapon-checkbox-item">
-                            <input
-                              type="checkbox"
-                              checked={secondaryWeapon?.id === item.id}
-                    onChange={(e) => {
-                                if (e.target.checked) {
-                                  // Se já havia uma arma secundária selecionada e é diferente, desmarca a anterior
-                                  if (secondaryWeapon && secondaryWeapon.id !== item.id) {
-                                    // A nova seleção substitui a anterior
-                                  }
-                                  setSecondaryWeapon(item);
-                                  // IMPORTANTE: Arma sempre começa vazia, precisa selecionar um carregador primeiro
-                                  if (item.weaponType === 'fogo') {
-                                    // Inicia vazia (0/0) até que um carregador seja selecionado
-                                    setSecondaryWeaponMagazine({ current: 0, max: 0 });
-                                    // Limpa as referências do carregador anterior
-                                    setCurrentSecondaryMagazineId(null);
-                                    setCurrentSecondaryMagazineInfo(null);
-                                    setPrevSecondaryMagazine({ current: 0, max: 0 });
-                                  } else {
-                                    setSecondaryWeaponMagazine({ current: 0, max: 30 });
-                                  }
-                                } else {
-                                  setSecondaryWeapon(null);
-                                  setSecondaryWeaponMagazine({ current: 0, max: 0 });
-                                  setCurrentSecondaryMagazineId(null);
-                                  setCurrentSecondaryMagazineInfo(null);
-                                }
-                              }}
-                            />
-                            <span>
-                              {item.name} 
-                              {item.weaponType === 'fogo' ? ' [Fogo]' : item.weaponType === 'corpo-a-corpo' ? ' [Corpo a Corpo]' : ''} 
-                              {' '}(×{item.quantity})
-                            </span>
-                          </label>
-                        ))
-                    )}
-                  </div>
-                  )}
-                  {secondaryWeapon && (
-                    <div className="weapon-info">
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                      <span className="weapon-name" style={{ fontSize: '0.85rem' }}>{secondaryWeapon.name}</span>
-                          {secondaryWeapon.weaponType === 'fogo' && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', position: 'relative' }}>
-                              <span style={{ fontSize: '0.7rem', color: darkMode ? '#7289da' : '#5b9bd5' }}>Carregador:</span>
-                              <span
-                                style={{
-                                  fontSize: '0.7rem',
-                                  color: darkMode ? '#dcddde' : '#2c3e50',
-                                  cursor: currentSecondaryMagazineInfo ? 'pointer' : 'not-allowed',
-                                  userSelect: 'none',
-                                  padding: '0.15rem 0.3rem',
-                                  borderRadius: '3px',
-                                  background: currentSecondaryMagazineInfo 
-                                    ? (darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.1)')
-                                    : (darkMode ? 'rgba(114, 137, 218, 0.05)' : 'rgba(91, 155, 213, 0.05)'),
-                                  border: `1px solid ${darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.3)'}`,
-                                  opacity: currentSecondaryMagazineInfo ? 1 : 0.5
-                                }}
-                                onClick={() => {
-                                  if (currentSecondaryMagazineInfo) {
-                                    setTempMagazineValue('');
-                                    setEditingSecondaryMagazine(true);
-                                  } else {
-                                    alert('⚠️ Selecione um carregador primeiro!');
-                                  }
-                                }}
-                                title={currentSecondaryMagazineInfo ? 'Clique para editar' : 'Selecione um carregador primeiro'}
-                              >
-                                {secondaryWeaponMagazine.max > 0 ? `${secondaryWeaponMagazine.current} / ${secondaryWeaponMagazine.max}` : '0 / 0 (Vazio)'}
-                              </span>
-                              {editingSecondaryMagazine && (
-                                  <div
-                                    style={{
-                                      position: 'absolute',
-                                      top: '100%',
-                                      right: 0,
-                                      marginTop: '0.5rem',
-                                      padding: '0.75rem',
-                                      background: darkMode ? '#2f3136' : '#fff',
-                                      border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
-                                      borderRadius: '8px',
-                                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                      zIndex: 1000,
-                                      minWidth: '200px'
-                                    }}
-                                  >
-                                    <div style={{
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      gap: '0.5rem',
-                                      marginBottom: '0.5rem',
-                                      paddingBottom: '0.5rem',
-                                      borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
-                                    }}>
-                                      <span style={{
-                                        fontSize: '0.7rem',
-                                        fontWeight: '700',
-                                        color: darkMode ? '#7289da' : '#5b9bd5',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px'
-                                      }}>
-                                        ATUAL
-                                      </span>
-                                      <span style={{
-                                        fontSize: '1.2rem',
-                                        fontWeight: '600',
-                                        color: darkMode ? '#dcddde' : '#2c3e50'
-                                      }}>
-                                        {secondaryWeaponMagazine.current} / {secondaryWeaponMagazine.max}
-                                      </span>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      value={tempMagazineValue}
-                                      onChange={(e) => setTempMagazineValue(e.target.value)}
-                                      onBlur={() => {
-                                        const input = tempMagazineValue.trim();
-                                        
-                                        if (input) {
-                                          const currentCurrent = secondaryWeaponMagazine.current;
-                                          const currentMax = secondaryWeaponMagazine.max;
-                                          
-                                          let newCurrent = currentCurrent;
-                                          
-                                          // Operação de adição (+X)
-                                          if (input.startsWith('+')) {
-                                            const value = parseInt(input.substring(1)) || 0;
-                                            newCurrent = Math.max(0, Math.min(currentMax, currentCurrent + value));
-                                            setSecondaryWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
-                                          }
-                                          // Operação de subtração (-X)
-                                          else if (input.startsWith('-')) {
-                                            const value = parseInt(input.substring(1)) || 0;
-                                            newCurrent = Math.max(0, currentCurrent - value);
-                                            setSecondaryWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
-                                          }
-                                          // Formato atual / máximo
-                                          else if (input.includes('/')) {
-                                            const values = input.split('/').map(v => v.trim());
-                                            if (values.length === 2) {
-                                              const current = parseInt(values[0]) || 0;
-                                              const max = parseInt(values[1]) || 1;
-                                              newCurrent = Math.max(0, Math.min(max, current));
-                                              setSecondaryWeaponMagazine({
-                                                current: newCurrent,
-                                                max: Math.max(1, max)
-                                              });
-                                            }
-                                          }
-                                          // Valor absoluto (apenas atual)
-                                          else {
-                                            const value = parseInt(input);
-                                            if (!isNaN(value)) {
-                                              newCurrent = Math.max(0, Math.min(currentMax, value));
-                                              setSecondaryWeaponMagazine(prev => ({
-                                                ...prev,
-                                                current: newCurrent
-                                              }));
-                                            }
-                                          }
-                                          
-                                          // IMPORTANTE: A edição inline NÃO salva automaticamente no inventário
-                                          // O salvamento só acontece quando:
-                                          // 1. Recarrega a arma (handleReloadWeapon)
-                                          // 2. Seleciona um novo carregador (handleSelectMagazine)
-                                          // Apenas atualiza o estado visual do carregador na arma
-                                          
-                                          // Atualiza o prev para refletir o novo valor
-                                          setPrevSecondaryMagazine({ current: newCurrent, max: currentMax });
-                                        }
-                                        
-                                        setEditingSecondaryMagazine(false);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                          e.target.blur();
-                                        } else if (e.key === 'Escape') {
-                                          setEditingSecondaryMagazine(false);
-                                        }
-                                      }}
-                                      placeholder="+10, -5, 25/30, 25"
-                                      autoFocus
-                                      style={{
-                                        width: '100%',
-                                        padding: '0.5rem',
-                                        fontSize: '0.9rem',
-                                        border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
-                                        borderRadius: '4px',
-                                        background: darkMode ? '#36393f' : '#fff',
-                                        color: darkMode ? '#dcddde' : '#2c3e50',
-                                        outline: 'none'
-                                      }}
-                                    />
-                                    <div style={{
-                                      fontSize: '0.7rem',
-                                      color: darkMode ? '#72767d' : '#7f8c8d',
-                                      marginTop: '0.25rem'
-                                    }}>
-                                      Digite +/- ou valor (ex: +10, -5, 25/30)
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                          )}
-                        </div>
-                        {secondaryWeapon.weaponType && (
-                          <div style={{ 
-                            fontSize: '0.65rem', 
-                            color: darkMode ? '#72767d' : '#7f8c8d',
-                            padding: '0.125rem 0',
-                            borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
-                            paddingBottom: '0.25rem'
-                          }}>
-                            <strong>Tipo:</strong> {secondaryWeapon.weaponType === 'fogo' ? 'Arma de Fogo' : secondaryWeapon.weaponType === 'corpo-a-corpo' ? 'Arma Branca Corpo a Corpo' : secondaryWeapon.weaponType}
-                          </div>
-                        )}
-                        {secondaryWeapon.weaponType === 'fogo' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            {/* Select para escolher carregador */}
-                            <div style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              gap: '0.125rem',
-                              marginBottom: '0.25rem'
-                            }}>
-                              <label style={{ 
-                                fontSize: '0.65rem', 
-                                fontWeight: '600',
-                                color: darkMode ? '#7289da' : '#5b9bd5'
-                              }}>
-                                Selecionar Carregador:
-                              </label>
-                  <select
-                                value={selectedSecondaryMagazine || getCurrentMagazineSelectId(secondaryWeapon, currentSecondaryMagazineInfo, currentSecondaryMagazineId, secondaryWeaponMagazine, false)}
-                    onChange={(e) => {
-                                  const selectedId = e.target.value;
-                                  if (selectedId) {
-                                    const allMagazines = getAllCompatibleMagazinesForSelect(secondaryWeapon, false);
-                                    const selectedMagazine = allMagazines.find(m => m.id === selectedId);
-                                    if (selectedMagazine) {
-                                      handleSelectMagazine(selectedMagazine, false);
-                                    }
-                                  } else {
-                                    // Se selecionar a opção vazia, limpa o carregador
-                                    setSelectedSecondaryMagazine('');
-                                  }
-                                }}
-                                style={{
-                                  padding: '0.375rem',
-                                  fontSize: '0.7rem',
-                                  border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
-                                  borderRadius: '4px',
-                                  background: darkMode ? '#36393f' : '#fff',
-                                  color: darkMode ? '#dcddde' : '#2c3e50',
-                                  outline: 'none',
-                                  cursor: 'pointer'
-                    }}
-                  >
-                                <option value="">Selecione um carregador...</option>
-                                {getAllCompatibleMagazinesForSelect(secondaryWeapon, false).map(mag => (
-                                  <option key={mag.id} value={mag.id}>
-                                    {mag.displayName}
-                        </option>
-                      ))}
-                  </select>
-                            </div>
-                            {secondaryWeapon && secondaryWeapon.weaponType === 'fogo' && (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
-                                <div style={{ display: 'flex', flexDirection: 'row', gap: '0.375rem' }}>
-                                  <button
-                                    className="btn-reload"
-                                    onClick={() => {
-                                      if (!currentSecondaryMagazineInfo) {
-                                        alert('⚠️ Selecione um carregador primeiro!');
-                                        return;
-                                      }
-                                      handleReloadWeapon(false);
-                                    }}
-                                    disabled={!currentSecondaryMagazineInfo || secondaryWeaponMagazine.max === 0 || secondaryWeaponMagazine.current >= secondaryWeaponMagazine.max || getAvailableMagazines(secondaryWeapon).length === 0}
-                                    title={!currentSecondaryMagazineInfo ? 'Selecione um carregador primeiro' : ''}
-                                    style={{ flex: 1 }}
-                                  >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                    Recarregar Arma
-                                  </button>
-                                  <button
-                                    className="btn-load-magazines"
-                                    onClick={() => handleLoadMagazines(secondaryWeapon)}
-                                    disabled={!getAvailableAmmunition(secondaryWeapon) || getEmptyMagazines(secondaryWeapon).length === 0}
-                                    style={{ flex: 1 }}
-                                  >
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                      <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                    </svg>
-                                    Carregar Carregadores
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            </div>
           </div>
         </div>
 
@@ -3765,27 +3119,24 @@ function App() {
                   <table className="data-table">
                     <thead>
                       <tr>
-                        <th>#</th>
                         <th>Tipo</th>
-                        <th>Atributo</th>
+                        <th>Chave</th>
                         <th>Valor</th>
                         <th>Ações</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((item, index) => (
+                      {items.map((item) => (
                         <tr key={item.id}>
-                          <td>{index + 1}</td>
                           <td>{item.type}</td>
                           <td>{item.key}</td>
                           <td>{item.value}</td>
                           <td>
                             <button
-                              className="btn-delete-small"
                               onClick={() => handleDelete(item.id)}
-                              title="Remover"
+                              className="btn-delete"
                             >
-                              🗑️
+                              Excluir
                             </button>
                           </td>
                         </tr>
@@ -3796,40 +3147,50 @@ function App() {
               )}
             </div>
 
-            {/* Aba 3: Resumo/Estatísticas */}
+            {/* Aba 3: Resumo */}
             <div className="tab-panel">
-              <h2>Resumo e Estatísticas</h2>
+              <h2>Resumo ({items.length})</h2>
               {items.length === 0 ? (
                 <div className="empty-state">
                   <p>Nenhum item adicionado ainda.</p>
                   <p>Use o formulário ao lado para começar!</p>
                 </div>
               ) : (
-                <div className="stats-container">
+                <div className="summary-container">
+                  <div className="summary-stats">
                   <div className="stat-card">
-                    <div className="stat-icon">📊</div>
-                    <div className="stat-content">
-                      <div className="stat-label">Total de Itens</div>
-                      <div className="stat-value">{items.length}</div>
-                    </div>
+                      <h3>Total de Itens</h3>
+                      <p className="stat-value">{items.length}</p>
                   </div>
                   <div className="stat-card">
-                    <div className="stat-icon">🏷️</div>
-                    <div className="stat-content">
-                      <div className="stat-label">Tipos Diferentes</div>
-                      <div className="stat-value">
-                        {new Set(items.map(item => item.type)).size}
+                      <h3>Tipos Únicos</h3>
+                      <p className="stat-value">
+                        {new Set(items.map((item) => item.type)).size}
+                      </p>
                       </div>
                     </div>
+                  <div className="summary-list">
+                    <h3>Itens por Tipo</h3>
+                    {Object.entries(
+                      items.reduce((acc, item) => {
+                        if (!acc[item.type]) {
+                          acc[item.type] = [];
+                        }
+                        acc[item.type].push(item);
+                        return acc;
+                      }, {})
+                    ).map(([type, typeItems]) => (
+                      <div key={type} className="type-group">
+                        <h4>{type} ({typeItems.length})</h4>
+                        <ul>
+                          {typeItems.map((item) => (
+                            <li key={item.id}>
+                              {item.key}: {item.value}
+                            </li>
+                          ))}
+                        </ul>
                   </div>
-                  <div className="stat-card">
-                    <div className="stat-icon">📝</div>
-                    <div className="stat-content">
-                      <div className="stat-label">Atributos Únicos</div>
-                      <div className="stat-value">
-                        {new Set(items.map(item => item.key)).size}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -3839,7 +3200,7 @@ function App() {
 
         <div className="result-section">
           <h2>🎒 Inventário</h2>
-            
+          
             {/* Tabs do Inventário */}
           <div className="inventory-tabs">
             <button
@@ -3902,20 +3263,22 @@ function App() {
                 </strong>
               </div>
             )}
+            {itemCategory !== 'dinheiro' && (
             <div className="form-group">
-              <label htmlFor="itemName">
-                {itemCategory === 'municoes' ? 'Tipo da Munição' : itemCategory === 'carregadores' ? 'Tipo de Carregador' : 'Nome do Item'}: <span style={{ color: '#e74c3c' }}>*</span>
-              </label>
+                <label htmlFor="itemName">
+                  {itemCategory === 'municoes' ? 'Tipo da Munição' : itemCategory === 'carregadores' ? 'Tipo de Carregador' : 'Nome do Item'}: <span style={{ color: '#e74c3c' }}>*</span>
+                </label>
               <input
                 id="itemName"
                 type="text"
                 value={itemName}
                 onChange={(e) => setItemName(e.target.value)}
-                placeholder={itemCategory === 'municoes' ? 'Ex: 9mm, 5.56mm, Plasma...' : itemCategory === 'carregadores' ? 'Ex: normal, estendido, curto...' : 'Ex: M4, Poção de Vida, Espada...'}
+                  placeholder={itemCategory === 'municoes' ? 'Ex: 9mm, 5.56mm, Plasma...' : itemCategory === 'carregadores' ? 'Ex: normal, estendido, curto...' : 'Ex: M4, Poção de Vida, Espada...'}
                 className="input"
-                required
+                  required
               />
             </div>
+            )}
             <div className="form-group">
                   <label>Categoria:</label>
                   <div className="category-checkboxes">
@@ -4087,6 +3450,28 @@ function App() {
                           </g>
                         </svg>
                         Carregadores
+                      </span>
+                    </label>
+                    <label className="category-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={itemCategory === 'dinheiro'}
+                        onChange={() => {
+                          setItemCategory('dinheiro');
+                          setWeaponType('');
+                          setAmmunitionType('');
+                          setMagazineCapacity('');
+                          setLinkedAmmunitions([]);
+                          setSelectedAmmunitionToAdd('');
+                          setLinkedMagazine('');
+                        }}
+                      />
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none"/>
+                          <path d="M12 6v12M9 9h6M9 15h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                        Dinheiro
                       </span>
                     </label>
                   </div>
@@ -4468,6 +3853,171 @@ function App() {
                     </div>
                   </>
                 )}
+                {itemCategory === 'dinheiro' && (
+                  <>
+                    <div className="form-group">
+                      <label>Moedas:</label>
+                      {moedas.map((moeda, index) => {
+                        const moedaInfo = moedasDisponiveis.find(m => m.codigo === moeda.tipo);
+                        return (
+                          <div key={moeda.id} style={{ 
+                            marginBottom: '1rem', 
+                            padding: '1rem', 
+                            background: darkMode ? '#36393f' : '#f8f9fa',
+                            borderRadius: '8px',
+                            border: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                            minWidth: 0,
+                            overflow: 'hidden'
+                          }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1 }}>
+                                <select
+                                  value={moeda.tipo}
+                                  onChange={(e) => {
+                                    const newMoedas = [...moedas];
+                                    const selectedMoeda = moedasDisponiveis.find(m => m.codigo === e.target.value);
+                                    newMoedas[index] = {
+                                      ...newMoedas[index],
+                                      tipo: e.target.value,
+                                      simbolo: selectedMoeda ? selectedMoeda.simbolo : '',
+                                    };
+                                    setMoedas(newMoedas);
+                                  }}
+                                  className="input"
+                                  style={{ flex: 1 }}
+                                >
+                                  {moedasDisponiveis.map(m => (
+                                    <option key={m.codigo} value={m.codigo}>
+                                      {m.nome} ({m.simbolo})
+                                    </option>
+                                  ))}
+                                </select>
+                                {moeda.tipo === 'CUSTOM' && (
+                                  <input
+                                    type="text"
+                                    value={moeda.simbolo}
+                                    onChange={(e) => {
+                                      const newMoedas = [...moedas];
+                                      newMoedas[index] = { ...newMoedas[index], simbolo: e.target.value };
+                                      setMoedas(newMoedas);
+                                    }}
+                                    placeholder="Símbolo"
+                                    className="input"
+                                    style={{ width: '80px' }}
+                                  />
+                                )}
+                              </div>
+                              {moedas.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMoedas(moedas.filter((_, i) => i !== index));
+                                  }}
+                                  style={{
+                                    background: '#e74c3c',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                    padding: '0.5rem',
+                                    cursor: 'pointer',
+                                    marginLeft: '0.5rem'
+                                  }}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', minWidth: 0 }}>
+                              <div style={{ minWidth: 0 }}>
+                                <label style={{ fontSize: '0.75rem', display: 'block', marginBottom: '0.25rem' }}>
+                                  Débito:
+                                </label>
+                                <input
+                                  type="number"
+                                  value={moeda.debito}
+                                  onChange={(e) => {
+                                    const newMoedas = [...moedas];
+                                    newMoedas[index] = { ...newMoedas[index], debito: parseFloat(e.target.value) || 0 };
+                                    setMoedas(newMoedas);
+                                  }}
+                                  placeholder="0.00"
+                                  className="input"
+                                  min="0"
+                                  step="0.01"
+                                  style={{ width: '100%', boxSizing: 'border-box' }}
+                                />
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <label style={{ fontSize: '0.75rem', display: 'block', marginBottom: '0.25rem' }}>
+                                  Crédito:
+                                </label>
+                                <input
+                                  type="number"
+                                  value={moeda.credito}
+                                  onChange={(e) => {
+                                    const newMoedas = [...moedas];
+                                    newMoedas[index] = { ...newMoedas[index], credito: parseFloat(e.target.value) || 0 };
+                                    setMoedas(newMoedas);
+                                  }}
+                                  placeholder="0.00"
+                                  className="input"
+                                  min="0"
+                                  step="0.01"
+                                  style={{ width: '100%', boxSizing: 'border-box' }}
+                                />
+                              </div>
+                              <div style={{ minWidth: 0 }}>
+                                <label style={{ fontSize: '0.75rem', display: 'block', marginBottom: '0.25rem' }}>
+                                  Espécie:
+                                </label>
+                                <input
+                                  type="number"
+                                  value={moeda.dinheiroEspecie}
+                                  onChange={(e) => {
+                                    const newMoedas = [...moedas];
+                                    newMoedas[index] = { ...newMoedas[index], dinheiroEspecie: parseFloat(e.target.value) || 0 };
+                                    setMoedas(newMoedas);
+                                  }}
+                                  placeholder="0.00"
+                                  className="input"
+                                  min="0"
+                                  step="0.01"
+                                  style={{ width: '100%', boxSizing: 'border-box' }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoedas([...moedas, { 
+                            id: Date.now().toString() + Math.random(), 
+                            tipo: 'BRL', 
+                            simbolo: 'R$', 
+                            debito: 0, 
+                            credito: 0, 
+                            dinheiroEspecie: 0 
+                          }]);
+                        }}
+                        style={{
+                          background: darkMode ? '#7289da' : '#5b9bd5',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          padding: '0.5rem 1rem',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          width: '100%',
+                          marginTop: '0.5rem'
+                        }}
+                      >
+                        + Adicionar Moeda
+                      </button>
+                    </div>
+                  </>
+                )}
             <div className="form-group">
               <label htmlFor="itemQuantity">Quantidade:</label>
               <input
@@ -4642,6 +4192,15 @@ function App() {
                             GERAL
                           </span>
                         )}
+                        {category === 'dinheiro' && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none"/>
+                              <path d="M12 6v12M9 9h6M9 15h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                            </svg>
+                            DINHEIRO
+                          </span>
+                        )}
                   </div>
                       <div className="discord-attributes">
                     {groupedInventory[category].map((item) => {
@@ -4681,7 +4240,377 @@ function App() {
                                   {item.category === 'municoes' && item.ammunitionType && ` (${item.ammunitionType})`}
                                   {item.category === 'carregadores' && item.ammunitionType && ` (${item.ammunitionType})`}
                                   {item.magazineCapacity && ` (${item.magazineCapacity} munições)`}
-                                  {partialAmmo && ` [Parcial: ${partialAmmo}/${item.magazineCapacity}]`}:
+                                  {partialAmmo && ` [Parcial: ${partialAmmo}/${item.magazineCapacity}]`}
+                                  {item.category === 'dinheiro' && item.moedas && item.moedas.length > 0 && (
+                                    <div style={{
+                                      marginTop: '0.5rem',
+                                      padding: '0.75rem',
+                                      background: darkMode ? '#2f3136' : '#ffffff',
+                                      borderRadius: '6px',
+                                      border: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                                      fontFamily: 'monospace',
+                                      fontSize: '0.85rem'
+                                    }}>
+                                      {item.moedas.map((moeda, idx) => {
+                                        const moedaInfo = moedasDisponiveis.find(m => m.codigo === moeda.tipo);
+                                        const simbolo = moeda.simbolo || (moedaInfo ? moedaInfo.simbolo : '');
+                                        const fieldKeyDebito = `${item.id}-${moeda.id}-debito`;
+                                        const fieldKeyCredito = `${item.id}-${moeda.id}-credito`;
+                                        const fieldKeyEspecie = `${item.id}-${moeda.id}-especie`;
+                                        const total = (moeda.debito || 0) + (moeda.credito || 0) + (moeda.dinheiroEspecie || 0);
+                                        
+                                        return (
+                                          <div key={idx} style={{ marginBottom: idx < item.moedas.length - 1 ? '0.75rem' : '0', paddingBottom: idx < item.moedas.length - 1 ? '0.75rem' : '0', borderBottom: idx < item.moedas.length - 1 ? `1px dashed ${darkMode ? '#40444b' : '#e3e8ed'}` : 'none' }}>
+                                            <div style={{ 
+                                              fontWeight: '600', 
+                                              marginBottom: '0.5rem',
+                                              color: darkMode ? '#7289da' : '#5b9bd5',
+                                              fontSize: '0.9rem'
+                                            }}>
+                                              {moedaInfo ? moedaInfo.nome : moeda.tipo} ({simbolo})
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                              {moeda.debito > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                  <span style={{ color: darkMode ? '#dcddde' : '#2c3e50' }}>Débito</span>
+                                                  <span 
+                                                    style={{ 
+                                                      cursor: 'pointer',
+                                                      userSelect: 'none',
+                                                      padding: '0.125rem 0.25rem',
+                                                      borderRadius: '4px',
+                                                      transition: 'background 0.2s',
+                                                      backgroundColor: editingMoneyField === fieldKeyDebito ? (darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)') : 'transparent',
+                                                      fontWeight: '600',
+                                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                                      position: 'relative'
+                                                    }}
+                                                    onClick={() => {
+                                                      setTempMoneyValue('');
+                                                      setEditingMoneyField(fieldKeyDebito);
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      if (editingMoneyField !== fieldKeyDebito) {
+                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
+                                                      }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      if (editingMoneyField !== fieldKeyDebito) {
+                                                        e.target.style.backgroundColor = 'transparent';
+                                                      }
+                                                    }}
+                                                  >
+                                                    {simbolo}{(moeda.debito || 0).toFixed(2)}
+                                                  </span>
+                                                  {editingMoneyField === fieldKeyDebito && (
+                                                    <div className="life-edit-popup" style={{ top: '100%', right: 0, marginTop: '0.5rem', zIndex: 1000 }}>
+                                                      <div className="life-current-display">
+                                                        <span className="current-label">DÉBITO ATUAL</span>
+                                                        <span className="current-value">{(moeda.debito || 0).toFixed(2)}</span>
+                                                      </div>
+                                                      <input
+                                                        type="text"
+                                                        className="life-operation-input"
+                                                        value={tempMoneyValue}
+                                                        onChange={(e) => setTempMoneyValue(e.target.value)}
+                                                        onBlur={() => {
+                                                          const input = tempMoneyValue.trim();
+                                                          if (input) {
+                                                            const currentValue = moeda.debito || 0;
+                                                            if (input.startsWith('+')) {
+                                                              const value = parseFloat(input.substring(1)) || 0;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue + value));
+                                                            } else if (input.startsWith('-')) {
+                                                              const value = parseFloat(input.substring(1)) || 0;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue - value));
+                                                            } else if (input.startsWith('*')) {
+                                                              const value = parseFloat(input.substring(1)) || 1;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue * value));
+                                                            } else if (input.startsWith('/')) {
+                                                              const value = parseFloat(input.substring(1)) || 1;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, currentValue / value));
+                                                            } else {
+                                                              const value = parseFloat(input);
+                                                              if (!isNaN(value)) {
+                                                                handleUpdateMoneyField(item.id, moeda.id, 'debito', Math.max(0, value));
+                                                              }
+                                                            }
+                                                          }
+                                                          setEditingMoneyField(null);
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                          if (e.key === 'Enter') {
+                                                            e.target.blur();
+                                                          } else if (e.key === 'Escape') {
+                                                            setEditingMoneyField(null);
+                                                          }
+                                                        }}
+                                                        placeholder="+100, -50, 500, *2, /2"
+                                                        autoFocus
+                                                      />
+                                                      <div className="life-edit-hint">Digite +/-/*// ou valor</div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                              {moeda.credito > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                  <span style={{ color: darkMode ? '#dcddde' : '#2c3e50' }}>Crédito</span>
+                                                  <span 
+                                                    style={{ 
+                                                      cursor: 'pointer',
+                                                      userSelect: 'none',
+                                                      padding: '0.125rem 0.25rem',
+                                                      borderRadius: '4px',
+                                                      transition: 'background 0.2s',
+                                                      backgroundColor: editingMoneyField === fieldKeyCredito ? (darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)') : 'transparent',
+                                                      fontWeight: '600',
+                                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                                      position: 'relative'
+                                                    }}
+                                                    onClick={() => {
+                                                      setTempMoneyValue('');
+                                                      setEditingMoneyField(fieldKeyCredito);
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      if (editingMoneyField !== fieldKeyCredito) {
+                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
+                                                      }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      if (editingMoneyField !== fieldKeyCredito) {
+                                                        e.target.style.backgroundColor = 'transparent';
+                                                      }
+                                                    }}
+                                                  >
+                                                    {simbolo}{(moeda.credito || 0).toFixed(2)}
+                                                  </span>
+                                                  {editingMoneyField === fieldKeyCredito && (
+                                                    <div className="life-edit-popup" style={{ top: '100%', right: 0, marginTop: '0.5rem', zIndex: 1000 }}>
+                                                      <div className="life-current-display">
+                                                        <span className="current-label">CRÉDITO ATUAL</span>
+                                                        <span className="current-value">{(moeda.credito || 0).toFixed(2)}</span>
+                                                      </div>
+                                                      <input
+                                                        type="text"
+                                                        className="life-operation-input"
+                                                        value={tempMoneyValue}
+                                                        onChange={(e) => setTempMoneyValue(e.target.value)}
+                                                        onBlur={() => {
+                                                          const input = tempMoneyValue.trim();
+                                                          if (input) {
+                                                            const currentValue = moeda.credito || 0;
+                                                            if (input.startsWith('+')) {
+                                                              const value = parseFloat(input.substring(1)) || 0;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue + value));
+                                                            } else if (input.startsWith('-')) {
+                                                              const value = parseFloat(input.substring(1)) || 0;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue - value));
+                                                            } else if (input.startsWith('*')) {
+                                                              const value = parseFloat(input.substring(1)) || 1;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue * value));
+                                                            } else if (input.startsWith('/')) {
+                                                              const value = parseFloat(input.substring(1)) || 1;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, currentValue / value));
+                                                            } else {
+                                                              const value = parseFloat(input);
+                                                              if (!isNaN(value)) {
+                                                                handleUpdateMoneyField(item.id, moeda.id, 'credito', Math.max(0, value));
+                                                              }
+                                                            }
+                                                          }
+                                                          setEditingMoneyField(null);
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                          if (e.key === 'Enter') {
+                                                            e.target.blur();
+                                                          } else if (e.key === 'Escape') {
+                                                            setEditingMoneyField(null);
+                                                          }
+                                                        }}
+                                                        placeholder="+100, -50, 500, *2, /2"
+                                                        autoFocus
+                                                      />
+                                                      <div className="life-edit-hint">Digite +/-/*// ou valor</div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                              {moeda.dinheiroEspecie > 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                  <span style={{ color: darkMode ? '#dcddde' : '#2c3e50' }}>Espécie</span>
+                                                  <span 
+                                                    style={{ 
+                                                      cursor: 'pointer',
+                                                      userSelect: 'none',
+                                                      padding: '0.125rem 0.25rem',
+                                                      borderRadius: '4px',
+                                                      transition: 'background 0.2s',
+                                                      backgroundColor: editingMoneyField === fieldKeyEspecie ? (darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.1)') : 'transparent',
+                                                      fontWeight: '600',
+                                                      color: darkMode ? '#dcddde' : '#2c3e50',
+                                                      position: 'relative'
+                                                    }}
+                                                    onClick={() => {
+                                                      setTempMoneyValue('');
+                                                      setEditingMoneyField(fieldKeyEspecie);
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                      if (editingMoneyField !== fieldKeyEspecie) {
+                                                        e.target.style.backgroundColor = darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.05)';
+                                                      }
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      if (editingMoneyField !== fieldKeyEspecie) {
+                                                        e.target.style.backgroundColor = 'transparent';
+                                                      }
+                                                    }}
+                                                  >
+                                                    {simbolo}{(moeda.dinheiroEspecie || 0).toFixed(2)}
+                                                  </span>
+                                                  {editingMoneyField === fieldKeyEspecie && (
+                                                    <div className="life-edit-popup" style={{ top: '100%', right: 0, marginTop: '0.5rem', zIndex: 1000 }}>
+                                                      <div className="life-current-display">
+                                                        <span className="current-label">ESPÉCIE ATUAL</span>
+                                                        <span className="current-value">{(moeda.dinheiroEspecie || 0).toFixed(2)}</span>
+                                                      </div>
+                                                      <input
+                                                        type="text"
+                                                        className="life-operation-input"
+                                                        value={tempMoneyValue}
+                                                        onChange={(e) => setTempMoneyValue(e.target.value)}
+                                                        onBlur={() => {
+                                                          const input = tempMoneyValue.trim();
+                                                          if (input) {
+                                                            const currentValue = moeda.dinheiroEspecie || 0;
+                                                            if (input.startsWith('+')) {
+                                                              const value = parseFloat(input.substring(1)) || 0;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue + value));
+                                                            } else if (input.startsWith('-')) {
+                                                              const value = parseFloat(input.substring(1)) || 0;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue - value));
+                                                            } else if (input.startsWith('*')) {
+                                                              const value = parseFloat(input.substring(1)) || 1;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue * value));
+                                                            } else if (input.startsWith('/')) {
+                                                              const value = parseFloat(input.substring(1)) || 1;
+                                                              handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, currentValue / value));
+                                                            } else {
+                                                              const value = parseFloat(input);
+                                                              if (!isNaN(value)) {
+                                                                handleUpdateMoneyField(item.id, moeda.id, 'especie', Math.max(0, value));
+                                                              }
+                                                            }
+                                                          }
+                                                          setEditingMoneyField(null);
+                                                        }}
+                                                        onKeyDown={(e) => {
+                                                          if (e.key === 'Enter') {
+                                                            e.target.blur();
+                                                          } else if (e.key === 'Escape') {
+                                                            setEditingMoneyField(null);
+                                                          }
+                                                        }}
+                                                        placeholder="+100, -50, 500, *2, /2"
+                                                        autoFocus
+                                                      />
+                                                      <div className="life-edit-hint">Digite +/-/*// ou valor</div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )}
+                                              <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginTop: '0.5rem',
+                                                paddingTop: '0.5rem',
+                                                borderTop: `2px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                                                fontWeight: '700',
+                                                fontSize: '0.95rem'
+                                              }}>
+                                                <span style={{ color: darkMode ? '#7289da' : '#5b9bd5' }}>TOTAL</span>
+                                                <span style={{ color: darkMode ? '#7289da' : '#5b9bd5' }}>{simbolo}{total.toFixed(2)}</span>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}` }}>
+                                        <button
+                                          onClick={() => handleEditInventoryItem(item)}
+                                          style={{
+                                            padding: '0.25rem 0.5rem',
+                                            background: 'rgba(114, 137, 218, 0.2)',
+                                            border: '1px solid rgba(114, 137, 218, 0.3)',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            color: '#7289da',
+                                            fontSize: '0.75rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.25rem',
+                                            transition: 'all 0.2s ease',
+                                            flex: 1
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background = 'rgba(114, 137, 218, 0.3)';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background = 'rgba(114, 137, 218, 0.2)';
+                                          }}
+                                          title="Editar item"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                          </svg>
+                                          Editar
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            if (confirm('Tem certeza que deseja excluir este item?')) {
+                                              handleDeleteInventoryItem(item.id);
+                                            }
+                                          }}
+                                          style={{
+                                            padding: '0.25rem 0.5rem',
+                                            background: 'rgba(123, 31, 162, 0.2)',
+                                            border: '1px solid rgba(123, 31, 162, 0.3)',
+                                            borderRadius: '4px',
+                                            cursor: 'pointer',
+                                            color: '#ba68c8',
+                                            fontSize: '0.75rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.25rem',
+                                            transition: 'all 0.2s ease',
+                                            flex: 1
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.target.style.background = 'rgba(123, 31, 162, 0.3)';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.target.style.background = 'rgba(123, 31, 162, 0.2)';
+                                          }}
+                                          title="Excluir item"
+                                        >
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                          </svg>
+                                          Excluir
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {item.category === 'dinheiro' && !item.moedas && (
+                                    <>
+                                      {item.debito > 0 && ` | Débito: ${item.debito.toFixed(2)}`}
+                                      {item.credito > 0 && ` | Crédito: ${item.credito.toFixed(2)}`}
+                                      {item.dinheiroEspecie > 0 && ` | Espécie: ${item.dinheiroEspecie.toFixed(2)}`}
+                                    </>
+                                  )}
+                                  {item.category !== 'dinheiro' && ':'}
                                 </span>
                                 <div style={{ position: 'relative' }}>
                                   <span 
@@ -4827,6 +4756,7 @@ function App() {
                                 </div>
                               ) : null}
                             </div>
+                            {item.category !== 'dinheiro' && (
                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
                             <button
                                 onClick={() => handleEditInventoryItem(item)}
@@ -4890,6 +4820,7 @@ function App() {
                                 Excluir
                             </button>
                           </div>
+                            )}
                             {item.linkedWeapon && (
                               <div className="discord-attribute" style={{ marginTop: '0.25rem', marginLeft: '1rem', fontSize: '0.6rem' }}>
                                 <span className="discord-attr-name" style={{ fontSize: '0.6rem' }}>Arma:</span>
@@ -4933,22 +4864,682 @@ function App() {
           )}
         </div>
 
-        {/* Quarta Coluna - Nova Seção */}
+        {/* Quarta Coluna - Armamentos */}
         <div className="result-section">
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2 10h20M2 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <rect x="3" y="8" width="18" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+              <rect x="5" y="10" width="14" height="4" rx="0.5" fill="currentColor" opacity="0.3"/>
+              <path d="M8 6h8M8 18h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
             </svg>
-            Nova Seção
+            Armamentos
           </h2>
-          <div style={{ 
-            padding: '2rem', 
-            textAlign: 'center', 
-            color: darkMode ? '#72767d' : '#95a5a6',
-            fontSize: '0.9rem'
-          }}>
-            <p>Conteúdo da nova grid</p>
+          
+          <div className="weapons-content">
+            <div className="weapon-section">
+              <div className="weapon-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 10h20M2 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <rect x="3" y="8" width="18" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="5" y="10" width="14" height="4" rx="0.5" fill="currentColor" opacity="0.3"/>
+                  <path d="M8 6h8M8 18h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                </svg>
+                <span className="weapon-label">Arma Principal</span>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', alignItems: 'center' }}>
+                            <button
+                    className="btn-change-weapon"
+                    onClick={() => setShowPrimaryWeaponList(!showPrimaryWeaponList)}
+                    title={showPrimaryWeaponList ? 'Ocultar lista' : 'Trocar arma'}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      {showPrimaryWeaponList ? (
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      ) : (
+                        <path d="M3 12h18M12 3v18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      )}
+                    </svg>
+                            </button>
+                          </div>
+                        </div>
+              {showPrimaryWeaponList && (
+              <div className="weapon-checkboxes">
+                {inventory.filter(item => item.category === 'armas').length === 0 ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: darkMode ? '#72767d' : '#7f8c8d', fontSize: '0.875rem' }}>
+                    Nenhuma arma cadastrada no inventário
+                      </div>
+                ) : (
+                  inventory
+                    .filter(item => item.category === 'armas')
+                    .map(item => (
+                      <label key={item.id} className="weapon-checkbox-item">
+                        <input
+                          type="checkbox"
+                          checked={primaryWeapon?.id === item.id}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              if (primaryWeapon && primaryWeapon.id !== item.id) {
+                              }
+                              setPrimaryWeapon(item);
+                              if (item.weaponType === 'fogo') {
+                                setWeaponMagazine({ current: 0, max: 0 });
+                                setCurrentPrimaryMagazineId(null);
+                                setCurrentPrimaryMagazineInfo(null);
+                                setPrevPrimaryMagazine({ current: 0, max: 0 });
+                              } else {
+                                setWeaponMagazine({ current: 0, max: 30 });
+                              }
+                            } else {
+                              setPrimaryWeapon(null);
+                              setWeaponMagazine({ current: 0, max: 0 });
+                              setCurrentPrimaryMagazineId(null);
+                              setCurrentPrimaryMagazineInfo(null);
+                            }
+                          }}
+                        />
+                        <span>
+                          {item.name} 
+                          {item.weaponType === 'fogo' ? ' [Fogo]' : item.weaponType === 'corpo-a-corpo' ? ' [Corpo a Corpo]' : ''} 
+                          {' '}(×{item.quantity})
+                        </span>
+                      </label>
+                    ))
+                )}
+                  </div>
+              )}
+              {primaryWeapon && (
+                <div className="weapon-info">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                      <span className="weapon-name" style={{ fontSize: '0.85rem' }}>{primaryWeapon.name}</span>
+                      {primaryWeapon.weaponType === 'fogo' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', position: 'relative' }}>
+                          <span style={{ fontSize: '0.7rem', color: darkMode ? '#7289da' : '#5b9bd5' }}>Carregador:</span>
+                          <span
+                            style={{
+                              fontSize: '0.7rem',
+                              color: darkMode ? '#dcddde' : '#2c3e50',
+                              cursor: currentPrimaryMagazineInfo ? 'pointer' : 'not-allowed',
+                              userSelect: 'none',
+                              padding: '0.15rem 0.3rem',
+                              borderRadius: '3px',
+                              background: currentPrimaryMagazineInfo 
+                                ? (darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.1)')
+                                : (darkMode ? 'rgba(114, 137, 218, 0.05)' : 'rgba(91, 155, 213, 0.05)'),
+                              border: `1px solid ${darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.3)'}`,
+                              opacity: currentPrimaryMagazineInfo ? 1 : 0.5
+                            }}
+                            onClick={() => {
+                              if (currentPrimaryMagazineInfo) {
+                                setTempMagazineValue('');
+                                setEditingPrimaryMagazine(true);
+                              } else {
+                                alert('⚠️ Selecione um carregador primeiro!');
+                              }
+                            }}
+                            title={currentPrimaryMagazineInfo ? 'Clique para editar' : 'Selecione um carregador primeiro'}
+                          >
+                            {weaponMagazine.max > 0 ? `${weaponMagazine.current} / ${weaponMagazine.max}` : '0 / 0 (Vazio)'}
+                          </span>
+                          {editingPrimaryMagazine && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '100%',
+                                right: 0,
+                                marginTop: '0.5rem',
+                                padding: '0.75rem',
+                                background: darkMode ? '#2f3136' : '#fff',
+                                border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                borderRadius: '8px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                zIndex: 1000,
+                                minWidth: '200px'
+                              }}
+                            >
+                              <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '0.5rem',
+                                marginBottom: '0.5rem',
+                                paddingBottom: '0.5rem',
+                                borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
+                              }}>
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  fontWeight: '700',
+                                  color: darkMode ? '#7289da' : '#5b9bd5',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.5px'
+                                }}>
+                                  ATUAL
+                                </span>
+                                <span style={{
+                                  fontSize: '1.2rem',
+                                  fontWeight: '600',
+                                  color: darkMode ? '#dcddde' : '#2c3e50'
+                                }}>
+                                  {weaponMagazine.current} / {weaponMagazine.max}
+                                </span>
+                </div>
+                              <input
+                                type="text"
+                                value={tempMagazineValue}
+                                onChange={(e) => setTempMagazineValue(e.target.value)}
+                                onBlur={() => {
+                                  const input = tempMagazineValue.trim();
+                                  
+                                  if (input) {
+                                    const currentCurrent = weaponMagazine.current;
+                                    const currentMax = weaponMagazine.max;
+                                    const prevCurrent = prevPrimaryMagazine.current;
+                                    
+                                    let newCurrent = currentCurrent;
+                                    
+                                    if (input.startsWith('+')) {
+                                      const value = parseInt(input.substring(1)) || 0;
+                                      newCurrent = Math.max(0, Math.min(currentMax, currentCurrent + value));
+                                      setWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
+                                    }
+                                    else if (input.startsWith('-')) {
+                                      const value = parseInt(input.substring(1)) || 0;
+                                      newCurrent = Math.max(0, currentCurrent - value);
+                                      setWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
+                                    }
+                                    else if (input.includes('/')) {
+                                      const values = input.split('/').map(v => v.trim());
+                                      if (values.length === 2) {
+                                        const current = parseInt(values[0]) || 0;
+                                        const max = parseInt(values[1]) || 1;
+                                        newCurrent = Math.max(0, Math.min(max, current));
+                                        setWeaponMagazine({
+                                          current: newCurrent,
+                                          max: Math.max(1, max)
+                                        });
+                                      }
+                                    }
+                                    else {
+                                      const value = parseInt(input);
+                                      if (!isNaN(value)) {
+                                        newCurrent = Math.max(0, Math.min(currentMax, value));
+                                        setWeaponMagazine(prev => ({
+                                          ...prev,
+                                          current: newCurrent
+                                        }));
+                                      }
+                                    }
+                                    
+                                    setPrevPrimaryMagazine({ current: newCurrent, max: currentMax });
+                                  }
+                                  
+                                  setEditingPrimaryMagazine(false);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.target.blur();
+                                  } else if (e.key === 'Escape') {
+                                    setEditingPrimaryMagazine(false);
+                                  }
+                                }}
+                                placeholder="+10, -5, 25/30, 25"
+                                autoFocus
+                                style={{
+                                  width: '100%',
+                                  padding: '0.5rem',
+                                  fontSize: '0.9rem',
+                                  border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                                  borderRadius: '4px',
+                                  background: darkMode ? '#36393f' : '#fff',
+                                  color: darkMode ? '#dcddde' : '#2c3e50',
+                                  outline: 'none'
+                                }}
+                              />
+                              <div style={{
+                                fontSize: '0.7rem',
+                                color: darkMode ? '#72767d' : '#7f8c8d',
+                                marginTop: '0.25rem'
+                              }}>
+                                Digite +/- ou valor (ex: +10, -5, 25/30)
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {primaryWeapon.weaponType && (
+                      <div style={{ 
+                        fontSize: '0.65rem', 
+                        color: darkMode ? '#72767d' : '#7f8c8d',
+                        padding: '0.125rem 0',
+                        borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                        paddingBottom: '0.25rem'
+                      }}>
+                        <strong>Tipo:</strong> {primaryWeapon.weaponType === 'fogo' ? 'Arma de Fogo' : primaryWeapon.weaponType === 'corpo-a-corpo' ? 'Arma Branca Corpo a Corpo' : primaryWeapon.weaponType}
+                      </div>
+                    )}
+                    {primaryWeapon.weaponType === 'fogo' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '0.125rem',
+                          marginBottom: '0.25rem'
+                        }}>
+                          <label style={{ 
+                            fontSize: '0.65rem', 
+                            fontWeight: '600',
+                            color: darkMode ? '#7289da' : '#5b9bd5'
+                          }}>
+                            Selecionar Carregador:
+                          </label>
+                          <select
+                            value={selectedPrimaryMagazine || getCurrentMagazineSelectId(primaryWeapon, currentPrimaryMagazineInfo, currentPrimaryMagazineId, weaponMagazine, true)}
+                            onChange={(e) => {
+                              const selectedId = e.target.value;
+                              if (selectedId) {
+                                const allMagazines = getAllCompatibleMagazinesForSelect(primaryWeapon, true);
+                                const selectedMagazine = allMagazines.find(m => m.id === selectedId);
+                                if (selectedMagazine) {
+                                  handleSelectMagazine(selectedMagazine, true);
+                                }
+                              } else {
+                                setSelectedPrimaryMagazine('');
+                              }
+                            }}
+                            style={{
+                              padding: '0.375rem',
+                              fontSize: '0.7rem',
+                              border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                              borderRadius: '4px',
+                              background: darkMode ? '#36393f' : '#fff',
+                              color: darkMode ? '#dcddde' : '#2c3e50',
+                              outline: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="">Selecione um carregador...</option>
+                            {getAllCompatibleMagazinesForSelect(primaryWeapon, true).map(mag => (
+                              <option key={mag.id} value={mag.id}>
+                                {mag.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {primaryWeapon && primaryWeapon.weaponType === 'fogo' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'row', gap: '0.375rem' }}>
+                              <button
+                                className="btn-reload"
+                                onClick={() => {
+                                  if (!currentPrimaryMagazineInfo) {
+                                    alert('⚠️ Selecione um carregador primeiro!');
+                                    return;
+                                  }
+                                  handleReloadWeapon(true);
+                                }}
+                                disabled={!currentPrimaryMagazineInfo || weaponMagazine.max === 0 || weaponMagazine.current >= weaponMagazine.max || getAvailableMagazines(primaryWeapon).length === 0}
+                                style={{ flex: 1 }}
+                                title={!currentPrimaryMagazineInfo ? 'Selecione um carregador primeiro' : ''}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                Recarregar Arma
+                              </button>
+                              <button
+                                className="btn-load-magazines"
+                                onClick={() => handleLoadMagazines(primaryWeapon)}
+                                disabled={!getAvailableAmmunition(primaryWeapon) || getEmptyMagazines(primaryWeapon).length === 0}
+                                style={{ flex: 1 }}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                Carregar Carregadores
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="weapon-section">
+              <div className="weapon-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 10h20M2 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <rect x="3" y="8" width="18" height="8" rx="1" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                  <rect x="5" y="10" width="14" height="4" rx="0.5" fill="currentColor" opacity="0.3"/>
+                  <path d="M8 6h8M8 18h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                </svg>
+                <span className="weapon-label">Arma Secundária</span>
+                <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto', alignItems: 'center' }}>
+                  <button
+                    className="btn-change-weapon"
+                    onClick={() => setShowSecondaryWeaponList(!showSecondaryWeaponList)}
+                    title={showSecondaryWeaponList ? 'Ocultar lista' : 'Trocar arma'}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      {showSecondaryWeaponList ? (
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      ) : (
+                        <path d="M3 12h18M12 3v18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      )}
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              {showSecondaryWeaponList && (
+              <div className="weapon-checkboxes">
+                {inventory.filter(item => item.category === 'armas' && item.id !== primaryWeapon?.id).length === 0 ? (
+                  <div style={{ padding: '1rem', textAlign: 'center', color: darkMode ? '#72767d' : '#7f8c8d', fontSize: '0.875rem' }}>
+                    {primaryWeapon ? 'Todas as armas já estão selecionadas' : 'Nenhuma arma cadastrada no inventário'}
+                  </div>
+                ) : (
+                  inventory
+                    .filter(item => item.category === 'armas' && item.id !== primaryWeapon?.id)
+                    .map(item => (
+                      <label key={item.id} className="weapon-checkbox-item">
+                        <input
+                          type="checkbox"
+                          checked={secondaryWeapon?.id === item.id}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              if (secondaryWeapon && secondaryWeapon.id !== item.id) {
+                              }
+                              setSecondaryWeapon(item);
+                              if (item.weaponType === 'fogo') {
+                                setSecondaryWeaponMagazine({ current: 0, max: 0 });
+                                setCurrentSecondaryMagazineId(null);
+                                setCurrentSecondaryMagazineInfo(null);
+                                setPrevSecondaryMagazine({ current: 0, max: 0 });
+                              } else {
+                                setSecondaryWeaponMagazine({ current: 0, max: 30 });
+                              }
+                            } else {
+                              setSecondaryWeapon(null);
+                              setSecondaryWeaponMagazine({ current: 0, max: 0 });
+                              setCurrentSecondaryMagazineId(null);
+                              setCurrentSecondaryMagazineInfo(null);
+                            }
+                          }}
+                        />
+                        <span>
+                          {item.name} 
+                          {item.weaponType === 'fogo' ? ' [Fogo]' : item.weaponType === 'corpo-a-corpo' ? ' [Corpo a Corpo]' : ''} 
+                          {' '}(×{item.quantity})
+                  </span>
+                      </label>
+                    ))
+                )}
+                </div>
+              )}
+              {secondaryWeapon && (
+                <div className="weapon-info">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                      <span className="weapon-name" style={{ fontSize: '0.85rem' }}>{secondaryWeapon.name}</span>
+                      {secondaryWeapon.weaponType === 'fogo' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', position: 'relative' }}>
+                          <span style={{ fontSize: '0.7rem', color: darkMode ? '#7289da' : '#5b9bd5' }}>Carregador:</span>
+                          <span
+                            style={{
+                              fontSize: '0.7rem',
+                              color: darkMode ? '#dcddde' : '#2c3e50',
+                              cursor: currentSecondaryMagazineInfo ? 'pointer' : 'not-allowed',
+                              userSelect: 'none',
+                              padding: '0.15rem 0.3rem',
+                              borderRadius: '3px',
+                              background: currentSecondaryMagazineInfo 
+                                ? (darkMode ? 'rgba(114, 137, 218, 0.1)' : 'rgba(91, 155, 213, 0.1)')
+                                : (darkMode ? 'rgba(114, 137, 218, 0.05)' : 'rgba(91, 155, 213, 0.05)'),
+                              border: `1px solid ${darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.3)'}`,
+                              opacity: currentSecondaryMagazineInfo ? 1 : 0.5
+                            }}
+                            onClick={() => {
+                              if (currentSecondaryMagazineInfo) {
+                                setTempMagazineValue('');
+                                setEditingSecondaryMagazine(true);
+                              } else {
+                                alert('⚠️ Selecione um carregador primeiro!');
+                              }
+                            }}
+                            title={currentSecondaryMagazineInfo ? 'Clique para editar' : 'Selecione um carregador primeiro'}
+                          >
+                            {secondaryWeaponMagazine.max > 0 ? `${secondaryWeaponMagazine.current} / ${secondaryWeaponMagazine.max}` : '0 / 0 (Vazio)'}
+                          </span>
+                          {editingSecondaryMagazine && (
+                              <div
+                                style={{
+                                  position: 'absolute',
+                                  top: '100%',
+                                  right: 0,
+                                  marginTop: '0.5rem',
+                                  padding: '0.75rem',
+                                  background: darkMode ? '#2f3136' : '#fff',
+                                  border: `2px solid ${darkMode ? '#7289da' : '#5b9bd5'}`,
+                                  borderRadius: '8px',
+                                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                  zIndex: 1000,
+                                  minWidth: '200px'
+                                }}
+                              >
+                                <div style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '0.5rem',
+                                  marginBottom: '0.5rem',
+                                  paddingBottom: '0.5rem',
+                                  borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`
+                                }}>
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    fontWeight: '700',
+                                    color: darkMode ? '#7289da' : '#5b9bd5',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px'
+                                  }}>
+                                    ATUAL
+                                  </span>
+                                  <span style={{
+                                    fontSize: '1.2rem',
+                                    fontWeight: '600',
+                                    color: darkMode ? '#dcddde' : '#2c3e50'
+                                  }}>
+                                    {secondaryWeaponMagazine.current} / {secondaryWeaponMagazine.max}
+                                  </span>
+                </div>
+                                <input
+                                  type="text"
+                                  value={tempMagazineValue}
+                                  onChange={(e) => setTempMagazineValue(e.target.value)}
+                                  onBlur={() => {
+                                    const input = tempMagazineValue.trim();
+                                    
+                                    if (input) {
+                                      const currentCurrent = secondaryWeaponMagazine.current;
+                                      const currentMax = secondaryWeaponMagazine.max;
+                                      
+                                      let newCurrent = currentCurrent;
+                                      
+                                      if (input.startsWith('+')) {
+                                        const value = parseInt(input.substring(1)) || 0;
+                                        newCurrent = Math.max(0, Math.min(currentMax, currentCurrent + value));
+                                        setSecondaryWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
+                                      }
+                                      else if (input.startsWith('-')) {
+                                        const value = parseInt(input.substring(1)) || 0;
+                                        newCurrent = Math.max(0, currentCurrent - value);
+                                        setSecondaryWeaponMagazine(prev => ({ ...prev, current: newCurrent }));
+                                      }
+                                      else if (input.includes('/')) {
+                                        const values = input.split('/').map(v => v.trim());
+                                        if (values.length === 2) {
+                                          const current = parseInt(values[0]) || 0;
+                                          const max = parseInt(values[1]) || 1;
+                                          newCurrent = Math.max(0, Math.min(max, current));
+                                          setSecondaryWeaponMagazine({
+                                            current: newCurrent,
+                                            max: Math.max(1, max)
+                                          });
+                                        }
+                                      }
+                                      else {
+                                        const value = parseInt(input);
+                                        if (!isNaN(value)) {
+                                          newCurrent = Math.max(0, Math.min(currentMax, value));
+                                          setSecondaryWeaponMagazine(prev => ({
+                                            ...prev,
+                                            current: newCurrent
+                                          }));
+                                        }
+                                      }
+                                      
+                                      setPrevSecondaryMagazine({ current: newCurrent, max: currentMax });
+                                    }
+                                    
+                                    setEditingSecondaryMagazine(false);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.target.blur();
+                                    } else if (e.key === 'Escape') {
+                                      setEditingSecondaryMagazine(false);
+                                    }
+                                  }}
+                                  placeholder="+10, -5, 25/30, 25"
+                                  autoFocus
+                                  style={{
+                                    width: '100%',
+                                    padding: '0.5rem',
+                                    fontSize: '0.9rem',
+                                    border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                                    borderRadius: '4px',
+                                    background: darkMode ? '#36393f' : '#fff',
+                                    color: darkMode ? '#dcddde' : '#2c3e50',
+                                    outline: 'none'
+                                  }}
+                                />
+                                <div style={{
+                                  fontSize: '0.7rem',
+                                  color: darkMode ? '#72767d' : '#7f8c8d',
+                                  marginTop: '0.25rem'
+                                }}>
+                                  Digite +/- ou valor (ex: +10, -5, 25/30)
+              </div>
+            </div>
+          )}
+        </div>
+                      )}
+                    </div>
+                    {secondaryWeapon.weaponType && (
+                      <div style={{ 
+                        fontSize: '0.65rem', 
+                        color: darkMode ? '#72767d' : '#7f8c8d',
+                        padding: '0.125rem 0',
+                        borderBottom: `1px solid ${darkMode ? '#40444b' : '#e3e8ed'}`,
+                        paddingBottom: '0.25rem'
+                      }}>
+                        <strong>Tipo:</strong> {secondaryWeapon.weaponType === 'fogo' ? 'Arma de Fogo' : secondaryWeapon.weaponType === 'corpo-a-corpo' ? 'Arma Branca Corpo a Corpo' : secondaryWeapon.weaponType}
+                      </div>
+                    )}
+                    {secondaryWeapon.weaponType === 'fogo' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          gap: '0.125rem',
+                          marginBottom: '0.25rem'
+                        }}>
+                          <label style={{ 
+                            fontSize: '0.65rem', 
+                            fontWeight: '600',
+                            color: darkMode ? '#7289da' : '#5b9bd5'
+                          }}>
+                            Selecionar Carregador:
+                          </label>
+                          <select
+                            value={selectedSecondaryMagazine || getCurrentMagazineSelectId(secondaryWeapon, currentSecondaryMagazineInfo, currentSecondaryMagazineId, secondaryWeaponMagazine, false)}
+                            onChange={(e) => {
+                              const selectedId = e.target.value;
+                              if (selectedId) {
+                                const allMagazines = getAllCompatibleMagazinesForSelect(secondaryWeapon, false);
+                                const selectedMagazine = allMagazines.find(m => m.id === selectedId);
+                                if (selectedMagazine) {
+                                  handleSelectMagazine(selectedMagazine, false);
+                                }
+                              } else {
+                                setSelectedSecondaryMagazine('');
+                              }
+                            }}
+                            style={{
+                              padding: '0.375rem',
+                              fontSize: '0.7rem',
+                              border: `1px solid ${darkMode ? '#40444b' : '#d1dce5'}`,
+                              borderRadius: '4px',
+                              background: darkMode ? '#36393f' : '#fff',
+                              color: darkMode ? '#dcddde' : '#2c3e50',
+                              outline: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="">Selecione um carregador...</option>
+                            {getAllCompatibleMagazinesForSelect(secondaryWeapon, false).map(mag => (
+                              <option key={mag.id} value={mag.id}>
+                                {mag.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {secondaryWeapon && secondaryWeapon.weaponType === 'fogo' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+                            <div style={{ display: 'flex', flexDirection: 'row', gap: '0.375rem' }}>
+                              <button
+                                className="btn-reload"
+                                onClick={() => {
+                                  if (!currentSecondaryMagazineInfo) {
+                                    alert('⚠️ Selecione um carregador primeiro!');
+                                    return;
+                                  }
+                                  handleReloadWeapon(false);
+                                }}
+                                disabled={!currentSecondaryMagazineInfo || secondaryWeaponMagazine.max === 0 || secondaryWeaponMagazine.current >= secondaryWeaponMagazine.max || getAvailableMagazines(secondaryWeapon).length === 0}
+                                title={!currentSecondaryMagazineInfo ? 'Selecione um carregador primeiro' : ''}
+                                style={{ flex: 1 }}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                Recarregar Arma
+                              </button>
+                              <button
+                                className="btn-load-magazines"
+                                onClick={() => handleLoadMagazines(secondaryWeapon)}
+                                disabled={!getAvailableAmmunition(secondaryWeapon) || getEmptyMagazines(secondaryWeapon).length === 0}
+                                style={{ flex: 1 }}
+                              >
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                Carregar Carregadores
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
