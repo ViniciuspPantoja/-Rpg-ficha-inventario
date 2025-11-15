@@ -32,10 +32,45 @@ ensureDataDir();
 // Endpoint para salvar dados do inventário
 app.post('/api/inventory', async (req, res) => {
   try {
-    const { inventory } = req.body;
+    const { inventory: newInventory } = req.body;
     const filePath = path.join(DATA_DIR, 'inventory.json');
-    await fs.writeFile(filePath, JSON.stringify(inventory, null, 2));
-    res.json({ success: true, message: 'Inventário salvo com sucesso!' });
+    
+    // Tenta carregar o inventário existente
+    let existingInventory = [];
+    try {
+      const existingData = await fs.readFile(filePath, 'utf-8');
+      existingInventory = JSON.parse(existingData);
+    } catch {
+      // Arquivo não existe, usa array vazio
+      existingInventory = [];
+    }
+    
+    // Faz merge inteligente baseado em IDs
+    // Se o item existe no novo inventário, atualiza. Se não existe, mantém o existente.
+    const inventoryMap = new Map();
+    
+    // Primeiro, adiciona todos os itens existentes ao mapa
+    existingInventory.forEach(item => {
+      if (item.id) {
+        inventoryMap.set(item.id, item);
+      }
+    });
+    
+    // Depois, atualiza ou adiciona os itens do novo inventário
+    if (Array.isArray(newInventory)) {
+      newInventory.forEach(item => {
+        if (item.id) {
+          inventoryMap.set(item.id, item);
+        }
+      });
+    }
+    
+    // Converte o mapa de volta para array
+    const mergedInventory = Array.from(inventoryMap.values());
+    
+    // Salva o inventário mesclado
+    await fs.writeFile(filePath, JSON.stringify(mergedInventory, null, 2));
+    res.json({ success: true, message: 'Inventário salvo com sucesso!', inventory: mergedInventory });
   } catch (error) {
     console.error('Erro ao salvar inventário:', error);
     res.status(500).json({ success: false, error: 'Erro ao salvar inventário' });
@@ -117,12 +152,46 @@ app.get('/api/ficha', async (req, res) => {
 // Endpoint para salvar todos os dados de uma vez
 app.post('/api/save-all', async (req, res) => {
   try {
-    const { inventory, ficha } = req.body;
+    const { inventory: newInventory, ficha } = req.body;
     
-    // Salvar inventário
-    if (inventory !== undefined) {
+    // Salvar inventário com merge
+    if (newInventory !== undefined) {
       const inventoryPath = path.join(DATA_DIR, 'inventory.json');
-      await fs.writeFile(inventoryPath, JSON.stringify(inventory, null, 2));
+      
+      // Tenta carregar o inventário existente
+      let existingInventory = [];
+      try {
+        const existingData = await fs.readFile(inventoryPath, 'utf-8');
+        existingInventory = JSON.parse(existingData);
+      } catch {
+        // Arquivo não existe, usa array vazio
+        existingInventory = [];
+      }
+      
+      // Faz merge inteligente baseado em IDs
+      const inventoryMap = new Map();
+      
+      // Primeiro, adiciona todos os itens existentes ao mapa
+      existingInventory.forEach(item => {
+        if (item.id) {
+          inventoryMap.set(item.id, item);
+        }
+      });
+      
+      // Depois, atualiza ou adiciona os itens do novo inventário
+      if (Array.isArray(newInventory)) {
+        newInventory.forEach(item => {
+          if (item.id) {
+            inventoryMap.set(item.id, item);
+          }
+        });
+      }
+      
+      // Converte o mapa de volta para array
+      const mergedInventory = Array.from(inventoryMap.values());
+      
+      // Salva o inventário mesclado
+      await fs.writeFile(inventoryPath, JSON.stringify(mergedInventory, null, 2));
     }
     
     // Salvar ficha

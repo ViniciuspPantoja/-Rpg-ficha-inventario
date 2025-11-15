@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -86,6 +86,22 @@ function App() {
   const [selectedPrimaryMagazine, setSelectedPrimaryMagazine] = useState('');
   const [selectedSecondaryMagazine, setSelectedSecondaryMagazine] = useState('');
   const [activeInventoryTab, setActiveInventoryTab] = useState('cadastrar');
+  const [isInitialLoad, setIsInitialLoad] = useState(true); // Flag para evitar salvar durante o carregamento inicial
+  // Ordem das categorias na visualização (padrão: dinheiro sempre por último)
+  const [categoryOrder, setCategoryOrder] = useState(() => {
+    // Tenta carregar do localStorage, senão usa a ordem padrão
+    const saved = localStorage.getItem('inventoryCategoryOrder');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Erro ao carregar ordem de categorias:', e);
+      }
+    }
+    // Ordem padrão: dinheiro sempre por último
+    return ['armas', 'armaduras', 'consumiveis', 'municoes', 'carregadores', 'magicos', 'geral', 'dinheiro'];
+  });
+  const [showCategoryOrderModal, setShowCategoryOrderModal] = useState(false);
   const [primaryWeapon, setPrimaryWeapon] = useState(null);
   const [secondaryWeapon, setSecondaryWeapon] = useState(null);
   const [weaponMagazine, setWeaponMagazine] = useState({ current: 0, max: 0 });
@@ -256,15 +272,28 @@ function App() {
         inventoryByCategory[item.category].push(item);
       });
       
-      Object.keys(inventoryByCategory).forEach(category => {
+      // Ordena as categorias de acordo com a preferência do usuário
+      const sortedCategoriesForTxt = Object.keys(inventoryByCategory).sort((a, b) => {
+        const indexA = categoryOrder.indexOf(a);
+        const indexB = categoryOrder.indexOf(b);
+        
+        // Se a categoria não está na lista de ordem, coloca no final
+        if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+        if (indexA === -1) return 1;
+        if (indexB === -1) return -1;
+        
+        return indexA - indexB;
+      });
+      
+      sortedCategoriesForTxt.forEach(category => {
         txtContent += `${category.toUpperCase()}:\n`;
         inventoryByCategory[category].forEach(item => {
-          if (item.category === 'carregadores' && item.instances) {
-            // Para carregadores com instâncias, mostra detalhes
-            const loadedQty = item.instances.filter(inst => inst.isLoaded && inst.currentAmmo === parseInt(item.magazineCapacity || 30)).length;
-            const emptyQty = item.instances.filter(inst => !inst.isLoaded && inst.currentAmmo === 0).length;
-            const partialQty = item.instances.filter(inst => inst.currentAmmo > 0 && inst.currentAmmo < parseInt(item.magazineCapacity || 30)).length;
-            txtContent += `  ${item.name} (${item.ammunitionType || 'N/A'}): Total=${item.quantity}, Carregados=${loadedQty}, Vazios=${emptyQty}, Parciais=${partialQty}\n`;
+          if (item.category === 'carregadores') {
+            // Para carregadores, cada item é um carregador individual
+            const capacity = parseInt(item.magazineCapacity) || 30;
+            const currentAmmo = item.currentAmmo !== undefined && item.currentAmmo !== null ? item.currentAmmo : 0;
+            const status = currentAmmo === 0 ? 'Vazio' : (currentAmmo === capacity ? 'Carregado' : 'Parcial');
+            txtContent += `  ${item.name} (${item.ammunitionType || 'N/A'}): ${currentAmmo}/${capacity} munições (${status})\n`;
           } else if (item.category === 'armas' && item.weaponType === 'fogo') {
             // Para armas de fogo, mostra informações de munição
             const ammoInfo = item.linkedAmmunitions && item.linkedAmmunitions.length > 0 
@@ -739,19 +768,159 @@ function App() {
     }
   };
 
-  // Monitora mudanças no pente da arma apenas para atualizar o estado prev
-  // O salvamento do carregador parcial agora é feito manualmente pelo botão "Salvar"
+  // Monitora mudanças no pente da arma e atualiza o inventário imediatamente
+  // IMPORTANTE: Atualiza o inventário quando a munição do carregador muda
   useEffect(() => {
-    // Arma primária - apenas atualiza o estado prev para rastrear mudanças
-    if (primaryWeapon && primaryWeapon.weaponType === 'fogo') {
-      setPrevPrimaryMagazine(weaponMagazine);
+    // Arma primária - atualiza o inventário quando a munição muda
+    if (primaryWeapon && primaryWeapon.weaponType === 'fogo' && currentPrimaryMagazineId && currentPrimaryMagazineInfo) {
+      // Verifica se a munição mudou (comparando com o estado anterior)
+      if (prevPrimaryMagazine.current !== weaponMagazine.current || prevPrimaryMagazine.max !== weaponMagazine.max) {
+        // IMPORTANTE: currentMagazineId É o ID único do carregador (não extrai mais)
+        // Atualiza o inventário usando função de atualização para evitar dependências circulares
+        setInventory(prevInventory => {
+          const usedMagazineInInventory = currentPrimaryMagazineId 
+            ? prevInventory.find(item => item.id === currentPrimaryMagazineId && item.category === 'carregadores')
+            : null;
+          
+          if (usedMagazineInInventory) {
+            // Atualiza diretamente o carregador pelo ID único
+            const capacity = parseInt(usedMagazineInInventory.magazineCapacity) || 30;
+                      const newCurrentAmmo = weaponMagazine.current;
+            const newState = getMagazineState(newCurrentAmmo, capacity);
+            
+            console.log('✅ useEffect primário - Atualizando carregador (mantendo mesmo ID):', {
+              id: currentPrimaryMagazineId,
+              oldCurrentAmmo: usedMagazineInInventory.currentAmmo,
+              oldState: usedMagazineInInventory.state,
+                        newCurrentAmmo,
+              newState,
+              capacity
+            });
+            
+            // IMPORTANTE: Cria uma cópia do array para garantir que o React detecte a mudança
+            const updatedInventory = [...prevInventory].map(item => {
+              if (item.id === currentPrimaryMagazineId) {
+                // Cria um novo objeto para garantir que o React detecte a mudança
+                  return {
+                    ...item,
+                  currentAmmo: newCurrentAmmo,
+                  state: newState, // Atualiza o estado
+                  isLoaded: newState === 'full' // Mantém compatibilidade
+                  };
+                }
+                return item;
+              });
+            
+            // IMPORTANTE: Atualiza também o weaponMagazine para refletir na grid
+            // Isso garante que a munição seja atualizada na grid de armamentos
+            setWeaponMagazine({ current: newCurrentAmmo, max: capacity });
+            
+            // IMPORTANTE: Retorna um novo array para forçar re-render
+            return [...updatedInventory];
+          }
+          return prevInventory;
+        });
+        // IMPORTANTE: Atualiza o prev DEPOIS de atualizar o inventário
+        // Cria uma cópia para evitar referência compartilhada
+        setPrevPrimaryMagazine({ current: weaponMagazine.current, max: weaponMagazine.max });
+      } else {
+        // DEBUG: Log quando não detecta mudança
+        console.log('🔍 useEffect primário - não detectou mudança:', {
+          prevCurrent: prevPrimaryMagazine.current,
+          currentCurrent: weaponMagazine.current,
+          prevMax: prevPrimaryMagazine.max,
+          currentMax: weaponMagazine.max,
+          currentMagazineId: currentPrimaryMagazineId,
+          hasWeapon: !!primaryWeapon,
+          hasMagazineInfo: !!currentPrimaryMagazineInfo,
+          areEqual: prevPrimaryMagazine.current === weaponMagazine.current && prevPrimaryMagazine.max === weaponMagazine.max
+        });
+      }
+    } else {
+      // DEBUG: Log quando não há condições para atualizar
+      console.log('🔍 useEffect primário - condições não atendidas:', {
+        hasWeapon: !!primaryWeapon,
+        weaponType: primaryWeapon?.weaponType,
+        hasMagazineId: !!currentPrimaryMagazineId,
+        hasMagazineInfo: !!currentPrimaryMagazineInfo
+      });
     }
     
-    // Arma secundária - apenas atualiza o estado prev para rastrear mudanças
-    if (secondaryWeapon && secondaryWeapon.weaponType === 'fogo') {
-      setPrevSecondaryMagazine(secondaryWeaponMagazine);
+    // Arma secundária - atualiza o inventário quando a munição muda
+    if (secondaryWeapon && secondaryWeapon.weaponType === 'fogo' && currentSecondaryMagazineId && currentSecondaryMagazineInfo) {
+      // Verifica se a munição mudou (comparando com o estado anterior)
+      if (prevSecondaryMagazine.current !== secondaryWeaponMagazine.current || prevSecondaryMagazine.max !== secondaryWeaponMagazine.max) {
+        // IMPORTANTE: currentMagazineId É o ID único do carregador (não extrai mais)
+        // Atualiza o inventário usando função de atualização para evitar dependências circulares
+        setInventory(prevInventory => {
+          const usedMagazineInInventory = currentSecondaryMagazineId 
+            ? prevInventory.find(item => item.id === currentSecondaryMagazineId && item.category === 'carregadores')
+            : null;
+          
+          if (usedMagazineInInventory) {
+            // Atualiza diretamente o carregador pelo ID único
+            const capacity = parseInt(usedMagazineInInventory.magazineCapacity) || 30;
+                    const newCurrentAmmo = secondaryWeaponMagazine.current;
+            const newState = getMagazineState(newCurrentAmmo, capacity);
+            
+            console.log('✅ useEffect secundário - Atualizando carregador (mantendo mesmo ID):', {
+              id: currentSecondaryMagazineId,
+              oldCurrentAmmo: usedMagazineInInventory.currentAmmo,
+              oldState: usedMagazineInInventory.state,
+                      newCurrentAmmo,
+              newState,
+              capacity
+            });
+            
+            // IMPORTANTE: Cria uma cópia do array para garantir que o React detecte a mudança
+            const updatedInventory = [...prevInventory].map(item => {
+              if (item.id === currentSecondaryMagazineId) {
+                // Cria um novo objeto para garantir que o React detecte a mudança
+                return {
+                  ...item,
+                  currentAmmo: newCurrentAmmo,
+                  state: newState, // Atualiza o estado
+                  isLoaded: newState === 'full' // Mantém compatibilidade
+                };
+              }
+              return item;
+            });
+            
+            // IMPORTANTE: Atualiza também o secondaryWeaponMagazine para refletir na grid
+            // Isso garante que a munição seja atualizada na grid de armamentos
+            setSecondaryWeaponMagazine({ current: newCurrentAmmo, max: capacity });
+            
+            // IMPORTANTE: Retorna um novo array para forçar re-render
+            return [...updatedInventory];
+          }
+          return prevInventory;
+        });
+        // IMPORTANTE: Atualiza o prev DEPOIS de atualizar o inventário
+        // Cria uma cópia para evitar referência compartilhada
+        setPrevSecondaryMagazine({ current: secondaryWeaponMagazine.current, max: secondaryWeaponMagazine.max });
+      } else {
+        // DEBUG: Log quando não detecta mudança
+        console.log('🔍 useEffect secundário - não detectou mudança:', {
+          prevCurrent: prevSecondaryMagazine.current,
+          currentCurrent: secondaryWeaponMagazine.current,
+          prevMax: prevSecondaryMagazine.max,
+          currentMax: secondaryWeaponMagazine.max,
+          currentMagazineId: currentSecondaryMagazineId,
+          hasWeapon: !!secondaryWeapon,
+          hasMagazineInfo: !!currentSecondaryMagazineInfo,
+          areEqual: prevSecondaryMagazine.current === secondaryWeaponMagazine.current && prevSecondaryMagazine.max === secondaryWeaponMagazine.max
+        });
+      }
+    } else {
+      // DEBUG: Log quando não há condições para atualizar
+      console.log('🔍 useEffect secundário - condições não atendidas:', {
+        hasWeapon: !!secondaryWeapon,
+        weaponType: secondaryWeapon?.weaponType,
+        hasMagazineId: !!currentSecondaryMagazineId,
+        hasMagazineInfo: !!currentSecondaryMagazineInfo
+      });
     }
-  }, [weaponMagazine, secondaryWeaponMagazine, primaryWeapon, secondaryWeapon]);
+  }, [weaponMagazine, secondaryWeaponMagazine, primaryWeapon, secondaryWeapon, currentPrimaryMagazineId, currentSecondaryMagazineId, currentPrimaryMagazineInfo, currentSecondaryMagazineInfo, prevPrimaryMagazine, prevSecondaryMagazine]);
 
   // Calcula a sanidade da ficha técnica e atualiza a sanidade máxima da ficha de status
   // A cada 5 pontos na ficha técnica, aumenta 5 pontos na sanidade máxima
@@ -823,8 +992,75 @@ function App() {
 
   // Carregar dados ao iniciar o componente
   useEffect(() => {
-    loadAll();
+    const loadData = async () => {
+      await loadAll();
+      // Marca que o carregamento inicial foi concluído após um pequeno delay
+      setTimeout(() => {
+        setIsInitialLoad(false);
+      }, 1500);
+    };
+    loadData();
   }, []); // Executa apenas uma vez ao montar o componente
+
+  // Salva o inventário no backend sempre que ele muda
+  // IMPORTANTE: Isso garante que o estado do carregador (incluindo munições parciais) seja persistido
+  useEffect(() => {
+    // Evita salvar durante o carregamento inicial
+    if (isInitialLoad || inventory.length === 0) return;
+    
+    // Salva o inventário no backend de forma assíncrona
+    const saveInventoryToBackend = async () => {
+      try {
+        const response = await fetch(`${API_URL}/inventory`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ inventory }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          console.log('✅ Inventário salvo automaticamente no backend');
+          // IMPORTANTE: Atualiza o estado local com o inventário mesclado retornado pelo servidor
+          // Isso garante que o estado local sempre tenha todos os dados do servidor
+          if (data.inventory && Array.isArray(data.inventory)) {
+            // Verifica se há itens no servidor que não estão no estado local
+            // Isso garante que dados adicionais do servidor sejam preservados
+            const localIds = new Set(inventory.map(item => item.id));
+            const serverIds = new Set(data.inventory.map(item => item.id));
+            const hasNewItems = [...serverIds].some(id => !localIds.has(id));
+            
+            // Se houver itens novos do servidor ou se o tamanho for diferente, atualiza
+            // Mas compara JSON stringificado para evitar atualizações desnecessárias
+            const localStr = JSON.stringify(inventory.map(i => ({ id: i.id, quantity: i.quantity })).sort((a, b) => a.id.localeCompare(b.id)));
+            const serverStr = JSON.stringify(data.inventory.map(i => ({ id: i.id, quantity: i.quantity })).sort((a, b) => a.id.localeCompare(b.id)));
+            
+            if (hasNewItems || localStr !== serverStr || data.inventory.length !== inventory.length) {
+              console.log('🔄 Atualizando inventário local com dados mesclados do servidor', {
+                localCount: inventory.length,
+                serverCount: data.inventory.length,
+                hasNewItems
+              });
+              // Usa setTimeout para evitar atualizar dentro do mesmo ciclo do useEffect
+              setTimeout(() => {
+                setInventory(data.inventory);
+              }, 100);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao salvar inventário no backend:', error);
+        // Não mostra erro para o usuário, apenas loga no console
+      }
+    };
+    
+    // Usa um debounce para evitar muitas requisições
+    const timeoutId = setTimeout(() => {
+      saveInventoryToBackend();
+    }, 1000); // Aguarda 1s antes de salvar para evitar muitas requisições
+    
+    return () => clearTimeout(timeoutId);
+  }, [inventory, isInitialLoad]); // Executa sempre que o inventário muda
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -1009,36 +1245,50 @@ function App() {
       return existingKey === itemKey;
     });
 
-    if (existingItemIndex !== -1) {
-      // Atualizar quantidade do item existente
+    if (itemCategory === 'carregadores') {
+      // Para carregadores, cria um objeto separado para cada carregador
+      // CADA CARREGADOR TEM UM ID ÚNICO
+      const initialAmmoValue = initialAmmo !== null && initialAmmo !== undefined ? parseInt(initialAmmo) : 0;
+      const capacity = parseInt(magazineCapacity) || 30;
+      // Garante que a munição está entre 0 e a capacidade máxima
+      const finalAmmo = Math.min(Math.max(0, initialAmmoValue), capacity);
+      
+      // Determina o estado baseado na munição final
+      const state = getMagazineState(finalAmmo, capacity);
+      
+      const newCarregadores = Array.from({ length: itemQuantity }, (_, i) => {
+        // Gera um ID único para cada carregador usando timestamp + índice + random
+        const uniqueId = `mag_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        return {
+          id: uniqueId, // ID único para cada carregador
+        name: itemName.trim(),
+        quantity: 1, // Cada carregador é um item único, então quantity sempre é 1
+        category: 'carregadores',
+        magazineCapacity: magazineCapacity.trim(),
+        ammunitionType: ammunitionType.trim(),
+        linkedWeapon: linkedWeapon || null,
+          currentAmmo: finalAmmo, // Quantidade atual de munições (0 a max)
+          state: state, // Estado: 'empty', 'full', ou 'partial'
+          // Mantém isLoaded para compatibilidade, mas baseado no estado
+          isLoaded: state === 'full', // true apenas se estiver cheio
+        };
+      });
+      
+      setInventory([...inventory, ...newCarregadores]);
+      showAlert(`${itemQuantity} carregador(es) cadastrado(s) com sucesso!`, 'success');
+    } else if (existingItemIndex !== -1) {
+      // Para outros itens, atualiza quantidade do item existente
       const updatedInventory = [...inventory];
       const existingItem = updatedInventory[existingItemIndex];
-      
-      if (itemCategory === 'carregadores') {
-        // Para carregadores, adiciona novas instâncias com IDs únicos
-        const initialAmmoValue = initialAmmo !== null && initialAmmo !== undefined ? parseInt(initialAmmo) : 0;
-        const capacity = parseInt(magazineCapacity) || 30;
-        const finalAmmo = Math.min(Math.max(0, initialAmmoValue), capacity); // Garante que não exceda a capacidade e seja >= 0
-        const newInstances = Array.from({ length: itemQuantity }, (_, i) => ({
-          instanceId: `${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
-          isLoaded: finalAmmo === capacity,
-          currentAmmo: finalAmmo
-        }));
-        updatedInventory[existingItemIndex] = {
-          ...existingItem,
-          quantity: existingItem.quantity + itemQuantity,
-          instances: [...(existingItem.instances || []), ...newInstances]
-        };
-      } else {
-        updatedInventory[existingItemIndex] = {
-          ...existingItem,
-          quantity: existingItem.quantity + itemQuantity,
-        };
-      }
+      updatedInventory[existingItemIndex] = {
+        ...existingItem,
+        quantity: existingItem.quantity + itemQuantity,
+      };
       setInventory(updatedInventory);
       showAlert(`Item atualizado! Quantidade total: ${updatedInventory[existingItemIndex].quantity}`, 'success');
     } else {
-      // Criar novo item
+      // Criar novo item (não é carregador)
       const newInventoryItem = {
         id: Date.now().toString(),
         name: itemCategory === 'dinheiro' ? 'Dinheiro' : itemName.trim(),
@@ -1052,24 +1302,6 @@ function App() {
         ...(itemCategory === 'municoes' && {
           ammunitionType: ammunitionType.trim(),
           linkedWeapon: linkedWeapon || null,
-        }),
-        ...(itemCategory === 'carregadores' && {
-          magazineCapacity: magazineCapacity.trim(),
-          ammunitionType: ammunitionType.trim(), // Tipo de munição que o carregador aceita
-          linkedWeapon: linkedWeapon || null,
-          loadedQuantity: 0, // Inicializa sem carregadores carregados
-          // Cria instâncias individuais para cada carregador físico com IDs únicos
-          instances: (() => {
-            const initialAmmoValue = initialAmmo !== null && initialAmmo !== undefined ? parseInt(initialAmmo) : 0;
-            const capacity = parseInt(magazineCapacity) || 30;
-            const finalAmmo = Math.min(Math.max(0, initialAmmoValue), capacity); // Garante que não exceda a capacidade e seja >= 0
-            console.log('Criando carregadores:', { initialAmmo, initialAmmoValue, capacity, finalAmmo, itemQuantity });
-            return Array.from({ length: itemQuantity }, (_, i) => ({
-              instanceId: `${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
-              isLoaded: finalAmmo === capacity,
-              currentAmmo: finalAmmo
-            }));
-          })()
         }),
         ...(itemCategory === 'dinheiro' && {
           moedas: moedas.filter(m => m.debito > 0 || m.credito > 0 || m.dinheiroEspecie > 0),
@@ -1114,6 +1346,36 @@ function App() {
         item.id === id ? { ...item, quantity: newQuantity } : item
       ));
     }
+  };
+
+  // Função helper para determinar o estado de um carregador
+  // Retorna: 'empty' (vazio), 'full' (cheio), ou 'partial' (parcial)
+  const getMagazineState = (currentAmmo, maxCapacity) => {
+    const current = parseInt(currentAmmo) || 0;
+    const max = parseInt(maxCapacity) || 30;
+    
+    // Estado 1: VAZIO - munição = 0
+    if (current === 0) {
+      return 'empty';
+    }
+    
+    // Estado 2: CHEIO - munição = max (e > 0)
+    if (current === max && current > 0) {
+      return 'full';
+    }
+    
+    // Estado 3: PARCIAL - munição > 0 e < max
+    if (current > 0 && current < max) {
+      return 'partial';
+    }
+    
+    // Fallback: se estiver acima do max, trata como cheio (mas ajusta o valor)
+    if (current > max) {
+      return 'full';
+    }
+    
+    // Fallback: qualquer outro caso retorna vazio
+    return 'empty';
   };
 
   // Função para verificar se há carregadores disponíveis no inventário (carregados)
@@ -1263,24 +1525,32 @@ function App() {
     );
   };
 
-  // Função para obter todos os carregadores compatíveis para o select (incluindo vazios, parciais e usando)
-  const getAllCompatibleMagazinesForSelect = (weapon, isPrimary = true) => {
+  // Função para obter todos os carregadores compatíveis para o select
+  // IMPORTANTE: Cada carregador é um item único com ID único, não cria IDs temporários
+  const getAllCompatibleMagazinesForSelect = (weapon, isPrimary = true, customInventory = null) => {
     if (!weapon) return [];
     
-    const compatibleMagazines = getCompatibleMagazines(weapon);
-    const allOptions = [];
+    // Usa o inventário customizado se fornecido, senão usa o estado atual
+    const inventoryToUse = customInventory || inventory;
     
-    // Busca carregadores parciais compatíveis
+    // Busca carregadores compatíveis
     const ammoIds = Array.isArray(weapon.linkedAmmunitions) 
       ? weapon.linkedAmmunitions 
       : (weapon.linkedAmmunition ? [weapon.linkedAmmunition] : []);
-    const linkedAmmunitions = inventory.filter(a => ammoIds.includes(a.id));
+    
+    if (ammoIds.length === 0) return [];
+    
+    const linkedAmmunitions = inventoryToUse.filter(a => ammoIds.includes(a.id));
     const ammunitionTypes = linkedAmmunitions.map(a => a.ammunitionType).filter(Boolean);
     
-    const partialMagazines = inventory.filter(item => 
+    if (ammunitionTypes.length === 0) return [];
+    
+    // Busca todos os carregadores compatíveis
+    const compatibleMagazines = inventoryToUse.filter(item => 
       item.category === 'carregadores' && 
-      item.partialAmmo &&
-      ammunitionTypes.includes(item.ammunitionType)
+      ammunitionTypes.includes(item.ammunitionType) &&
+      (item.linkedWeapon === weapon.id || !item.linkedWeapon) &&
+      item.quantity > 0
     );
     
     // Obtém informações do carregador atual na arma
@@ -1288,173 +1558,80 @@ function App() {
     const currentMagazineInfo = isPrimary ? currentPrimaryMagazineInfo : currentSecondaryMagazineInfo;
     const currentMagazineId = isPrimary ? currentPrimaryMagazineId : currentSecondaryMagazineId;
     
-    // Adiciona carregadores normais (carregados e vazios)
+    const allOptions = [];
+    
+    // IMPORTANTE: Cada carregador é um item único, usa diretamente o ID único
     compatibleMagazines.forEach(mag => {
       const capacity = parseInt(mag.magazineCapacity) || 30;
-      const currentAmmoInWeapon = currentMagazine.max > 0 ? currentMagazine.current : null;
+      const currentAmmo = mag.currentAmmo !== undefined && mag.currentAmmo !== null ? mag.currentAmmo : 0;
       
-      // Se o carregador tem instâncias individuais, usa elas
-      if (mag.instances && Array.isArray(mag.instances)) {
-        mag.instances.forEach(instance => {
-          const isThisOneUsing = currentMagazineId === instance.instanceId && currentMagazineInfo && currentMagazine.max > 0;
-          const instanceAmmo = isThisOneUsing ? currentAmmoInWeapon : instance.currentAmmo;
-          
-          // Determina o tipo baseado no estado
+      // Determina o estado usando a função helper ou o estado já salvo
+      const state = mag.state || getMagazineState(currentAmmo, capacity);
+      
+      // Verifica se este carregador está sendo usado na arma
+      const isThisOneUsing = currentMagazineId === mag.id && currentMagazineInfo && currentMagazine.max > 0;
+      const currentAmmoInWeapon = isThisOneUsing ? currentMagazine.current : null;
+      const displayAmmo = isThisOneUsing ? currentAmmoInWeapon : currentAmmo;
+      
+      // Determina o tipo e nome de exibição baseado no estado
           let type = 'empty';
           let displayName = '';
           
           if (isThisOneUsing) {
-            // Está sendo usado na arma
+        // Está sendo usado na arma
             type = 'using';
-            displayName = `${mag.name} - Usando (${instanceAmmo}/${capacity})`;
-          } else if (instance.isLoaded && instance.currentAmmo === capacity) {
-            // Carregador cheio
-            type = 'loaded';
-            displayName = `${mag.name} - Carregado (${capacity} munições)`;
-          } else if (instance.currentAmmo > 0 && instance.currentAmmo < capacity) {
-            // Carregador parcial
-            type = 'partial';
-            displayName = `${mag.name} - Parcial (${instance.currentAmmo}/${capacity})`;
+        displayName = `${mag.name} - Usando (${displayAmmo}/${capacity})`;
           } else {
-            // Carregador vazio
-            type = 'empty';
-            displayName = `${mag.name} - Vazio (${capacity} munições)`;
-          }
-          
+        // Não está em uso - usa o estado do carregador
+        switch (state) {
+          case 'full':
+              type = 'loaded';
+            displayName = `${mag.name} - Cheio (${capacity} munições)`;
+            break;
+          case 'partial':
+              type = 'partial';
+              displayName = `${mag.name} - Parcial (${currentAmmo}/${capacity} munições)`;
+            break;
+          case 'empty':
+          default:
+              type = 'empty';
+              displayName = `${mag.name} - Vazio (${capacity} munições)`;
+            break;
+        }
+      }
+      
+      // IMPORTANTE: Usa diretamente o ID único do carregador (não cria IDs temporários)
           allOptions.push({
-            id: instance.instanceId,
-            originalId: mag.id,
+        id: mag.id, // ID único do carregador
+        originalId: mag.id, // Mesmo ID (não há mais instâncias)
             magazine: mag,
-            instance: instance,
             type: type,
             displayName: displayName,
             capacity: capacity,
-            currentAmmo: instanceAmmo || instance.currentAmmo || 0
-          });
-        });
-      } else {
-        // Fallback: sistema antigo sem instâncias (compatibilidade)
-        const loadedQty = mag.loadedQuantity || 0;
-        const totalQty = mag.quantity;
-        const emptyQty = totalQty - loadedQty;
-        
-        // Adiciona carregadores carregados
-        for (let i = 0; i < loadedQty; i++) {
-          const instanceId = `${mag.id}_loaded_${i}`;
-          const isThisOneUsing = currentMagazineId === instanceId && currentMagazineInfo && currentMagazine.max > 0;
-          
-          allOptions.push({
-            id: instanceId,
-            originalId: mag.id,
-            magazine: mag,
-            type: isThisOneUsing ? 'using' : 'loaded',
-            displayName: isThisOneUsing 
-              ? `${mag.name} - Usando (${currentAmmoInWeapon}/${capacity})`
-              : `${mag.name} - Carregado (${capacity} munições)`,
-            capacity: capacity,
-            currentAmmo: capacity
-          });
-        }
-        
-        // Adiciona carregadores vazios
-        for (let i = 0; i < emptyQty; i++) {
-          const instanceId = `${mag.id}_empty_${i}`;
-          const isThisOneUsing = currentMagazineId === instanceId && currentMagazineInfo && currentMagazine.max > 0;
-          
-          allOptions.push({
-            id: instanceId,
-            originalId: mag.id,
-            magazine: mag,
-            type: isThisOneUsing ? 'using' : 'empty',
-            displayName: isThisOneUsing 
-              ? `${mag.name} - Usando (${currentAmmoInWeapon || 0}/${capacity})`
-              : `${mag.name} - Vazio (${capacity} munições)`,
-            capacity: capacity,
-            currentAmmo: 0
-          });
-        }
-      }
-    });
-    
-    // Adiciona carregadores parciais
-    partialMagazines.forEach(partial => {
-      const partialAmmo = partial.partialAmmo || 0;
-      const capacity = parseInt(partial.magazineCapacity) || 30;
-      
-      // Verifica se ESTE parcial específico está sendo usado na arma
-      // O ID do parcial já é único (é o próprio ID do item no inventário)
-      const isUsing = currentMagazineId === partial.id && currentMagazineInfo && currentMagazine.max > 0;
-      const currentAmmoInWeapon = isUsing ? currentMagazine.current : null;
-      
-      // Se a munição for 0, trata como vazio
-      if (partialAmmo === 0) {
-        allOptions.push({
-          id: partial.id,
-          originalId: partial.id,
-          magazine: partial,
-          type: isUsing ? 'using' : 'empty',
-          displayName: isUsing 
-            ? `${partial.name} - Usando (0/${capacity})`
-            : `${partial.name} - Vazio (${capacity} munições)`,
-          capacity: capacity,
-          currentAmmo: 0
-        });
-      } else {
-        // Se a munição for > 0, trata como parcial
-        allOptions.push({
-          id: partial.id,
-          originalId: partial.id,
-          magazine: partial,
-          type: isUsing ? 'using' : 'partial',
-          displayName: isUsing 
-            ? `${partial.name} - Usando (${currentAmmoInWeapon || partialAmmo}/${capacity})`
-            : `${partial.name} - Parcial (${partialAmmo}/${capacity})`,
-          capacity: capacity,
-          currentAmmo: partialAmmo
-        });
-      }
+        currentAmmo: displayAmmo || currentAmmo || 0
+      });
     });
     
     return allOptions;
   };
 
   // Função para encontrar o ID do carregador atual no select
+  // IMPORTANTE: Agora cada carregador tem um ID único, então busca diretamente pelo ID
   const getCurrentMagazineSelectId = (weapon, currentMagazineInfo, currentMagazineId, currentMagazine, isPrimary) => {
     if (!weapon || !currentMagazineInfo || !currentMagazineId || currentMagazine.max === 0) {
       return '';
     }
     
-    const allMagazines = getAllCompatibleMagazinesForSelect(weapon, isPrimary);
+    // IMPORTANTE: Usa o inventário atual do estado para buscar os carregadores
+    const allMagazines = getAllCompatibleMagazinesForSelect(weapon, isPrimary, inventory);
     
-    // Procura pelo carregador que está sendo usado (type === 'using')
+    // Procura diretamente pelo ID único do carregador (não mais por originalId ou tipo)
+    const found = allMagazines.find(m => m.id === currentMagazineId);
+    if (found) return found.id;
+    
+    // Fallback: procura pelo carregador que está sendo usado (type === 'using')
     const usingMagazine = allMagazines.find(m => m.type === 'using');
     if (usingMagazine) return usingMagazine.id;
-    
-    // Se não encontrou "using", tenta encontrar pelo estado atual
-    // Se for um carregador cheio, procura por um "loaded"
-    if (currentMagazine.current === currentMagazine.max) {
-      const found = allMagazines.find(m => 
-        m.originalId === currentMagazineId && 
-        m.type === 'loaded'
-      );
-      if (found) return found.id;
-    }
-    // Se for um carregador parcial, procura pelo ID do parcial ou "partial"
-    else if (currentMagazine.current > 0 && currentMagazine.current < currentMagazine.max) {
-      const found = allMagazines.find(m => 
-        (m.id === currentMagazineId || m.originalId === currentMagazineId) && 
-        (m.type === 'partial' || m.type === 'using')
-      );
-      if (found) return found.id;
-    }
-    // Se for vazio, procura por um "empty"
-    else if (currentMagazine.current === 0) {
-      const found = allMagazines.find(m => 
-        m.originalId === currentMagazineId && 
-        m.type === 'empty'
-      );
-      if (found) return found.id;
-    }
     
     return '';
   };
@@ -1476,24 +1653,41 @@ function App() {
       let updatedInventory = [...prevInventory];
       
       // 1. Devolve o carregador atual ao inventário (se houver)
+      // IMPORTANTE: Extrai o originalId do currentMagazineId
+      let originalMagazineId = currentMagazineId;
+      if (currentMagazineId && (currentMagazineId.includes('_loaded_') || currentMagazineId.includes('_empty_'))) {
+        originalMagazineId = currentMagazineId.split('_loaded_')[0].split('_empty_')[0];
+      }
+      
       if (currentMagazine.current > 0 && currentMagazineInfo && currentMagazineId) {
-        // Encontra o item do carregador no inventário
-        const usedMagazineInInventory = updatedInventory.find(
-          item => item.id === currentMagazineInfo.id && item.category === 'carregadores'
-        );
+        // Encontra o item do carregador no inventário usando o originalId
+        const usedMagazineInInventory = originalMagazineId 
+          ? updatedInventory.find(
+              item => item.id === originalMagazineId && item.category === 'carregadores'
+            )
+          : null;
         
         if (usedMagazineInInventory) {
           // Se tem instâncias, atualiza a instância específica
           if (usedMagazineInInventory.instances && Array.isArray(usedMagazineInInventory.instances)) {
             updatedInventory = updatedInventory.map(item => {
-              if (item.id === usedMagazineInInventory.id) {
+              if (item.id === originalMagazineId) {
+                const capacity = parseInt(item.magazineCapacity) || 30;
                 const updatedInstances = item.instances.map(inst => {
                   if (inst.instanceId === currentMagazineId) {
-                    // Atualiza a instância com o estado atual
+                    // Atualiza a instância com o estado atual do carregador
+                    const newCurrentAmmo = currentMagazine.current;
+                    console.log('💾 handleSelectMagazine - Devolvendo carregador atual ao inventário:', {
+                      instanceId: inst.instanceId,
+                      currentMagazineId,
+                      newCurrentAmmo,
+                      capacity,
+                      isLoaded: newCurrentAmmo === capacity && newCurrentAmmo > 0
+                    });
                     return {
                       ...inst,
-                      isLoaded: currentMagazine.current === currentMagazine.max,
-                      currentAmmo: currentMagazine.current
+                      isLoaded: newCurrentAmmo === capacity && newCurrentAmmo > 0,
+                      currentAmmo: newCurrentAmmo
                     };
                   }
                   return inst;
@@ -1531,53 +1725,17 @@ function App() {
         }
       }
       
-      // 2. Remove o novo carregador do inventário (se necessário)
-      const newMagazineInInventory = updatedInventory.find(
-        item => item.id === magazineOption.originalId && item.category === 'carregadores'
-      );
-      
-      if (newMagazineInInventory) {
-        if (newMagazineInInventory.instances && Array.isArray(newMagazineInInventory.instances)) {
-          // Sistema novo com instâncias
-          updatedInventory = updatedInventory.map(item => {
-            if (item.id === magazineOption.originalId) {
-              const updatedInstances = item.instances.map(inst => {
-                if (inst.instanceId === magazineOption.id) {
-                  // Marca como usado (será atualizado quando devolver)
-                  return {
-                    ...inst,
-                    isLoaded: false,
-                    currentAmmo: 0
-                  };
-                }
-                return inst;
-              });
-              return {
-                ...item,
-                instances: updatedInstances
-              };
-            }
-            return item;
-          });
-        } else {
-          // Fallback: sistema antigo
-          if (magazineOption.type === 'loaded' || magazineOption.type === 'using') {
-            updatedInventory = updatedInventory.map(item => {
-              if (item.id === magazineOption.originalId) {
-                const currentLoaded = item.loadedQuantity || 0;
-                return {
-                  ...item,
-                  loadedQuantity: Math.max(0, currentLoaded - 1)
-                };
-              }
-              return item;
-            });
-          } else if (magazineOption.type === 'partial') {
-            updatedInventory = updatedInventory.filter(item => item.id !== magazineOption.id);
-          }
-        }
-      }
-      // Se for 'empty', não precisa atualizar (já está vazio no inventário)
+      // 2. IMPORTANTE: Não remove ou zera o carregador no inventário
+      // O carregador permanece no inventário com seu estado atual
+      // Ele será mostrado como "Usando" no select porque está na arma (através do currentMagazineId)
+      // Quando a arma for recarregada novamente, o carregador será atualizado com suas munições restantes
+      console.log('✅ handleSelectMagazine - Novo carregador selecionado para a arma:', {
+        magazineId: magazineOption.id,
+        originalId: magazineOption.originalId,
+        type: magazineOption.type,
+        currentAmmo: magazineOption.currentAmmo,
+        capacity: magazineOption.capacity
+      });
       
       return updatedInventory;
     });
@@ -1617,57 +1775,65 @@ function App() {
       return;
     }
 
-    // ANTES DE RECARREGAR: Salva o carregador atual se houver munições restantes
-    // IMPORTANTE: Só salva se current > 0, nunca salva carregador zerado
-    // IMPORTANTE: Cria apenas 1 item (parcial OU devolve ao inventário), nunca duplica
+    // ANTES DE RECARREGAR: Salva o carregador atual de volta no inventário
+    // IMPORTANTE: Cada carregador mantém sempre o mesmo ID, apenas muda o estado
     let updatedInventory = inventory;
     
-    // Extrai o originalId do currentMagazineId (pode ser instância como "mag.id_loaded_0")
-    let originalMagazineId = currentMagazineId;
-    if (currentMagazineId && (currentMagazineId.includes('_loaded_') || currentMagazineId.includes('_empty_'))) {
-      originalMagazineId = currentMagazineId.split('_loaded_')[0].split('_empty_')[0];
-    }
-    
-    if (currentMagazine.current > 0 && currentMagazineInfo && currentMagazineId) {
-      const usedMagazineInInventory = originalMagazineId 
-        ? inventory.find(item => item.id === originalMagazineId && item.category === 'carregadores')
-        : null;
+    // IMPORTANTE: currentMagazineId É o ID único do carregador (não extrai mais)
+    // O carregador deve ter sempre o mesmo ID, apenas muda de estado
+    if (currentMagazineId && currentMagazineInfo) {
+      // Busca o carregador no inventário pelo ID
+      const usedMagazineInInventory = inventory.find(item => item.id === currentMagazineId && item.category === 'carregadores');
       
-      if (currentMagazine.current === currentMagazine.max) {
-        // Carregador está cheio - devolve ao inventário aumentando loadedQuantity
-        // NÃO cria parcial, apenas devolve
-        if (usedMagazineInInventory) {
-          updatedInventory = inventory.map(item => {
-            if (item.id === originalMagazineId) {
+      if (usedMagazineInInventory) {
+        const capacity = parseInt(usedMagazineInInventory.magazineCapacity) || 30;
+                  const newCurrentAmmo = currentMagazine.current;
+        
+        // Determina o novo estado baseado na munição atual
+        const newState = getMagazineState(newCurrentAmmo, capacity);
+        
+        // IMPORTANTE: Atualiza o carregador mantendo o mesmo ID, apenas mudando estado
+        // Cria um novo array para garantir que o React detecte a mudança
+        updatedInventory = [...inventory].map(item => {
+          if (item.id === currentMagazineId) {
+            console.log('💾 Atualizando carregador (mantendo mesmo ID):', {
+              id: item.id,
+              oldState: item.state,
+              oldCurrentAmmo: item.currentAmmo,
+              newState,
+                    newCurrentAmmo,
+              capacity
+            });
+            // Cria um novo objeto para garantir que o React detecte a mudança
               return {
                 ...item,
-                loadedQuantity: (item.loadedQuantity || 0) + 1
+              currentAmmo: newCurrentAmmo,
+              state: newState, // Atualiza o estado (empty, partial, ou full)
+              isLoaded: newState === 'full' // Mantém compatibilidade
               };
             }
             return item;
           });
+        
+        // IMPORTANTE: Sempre cria um novo array para forçar re-render
+        setInventory([...updatedInventory]);
+        // IMPORTANTE: Atualiza a referência local também para uso posterior na função
+        updatedInventory = [...updatedInventory];
+        
+        // IMPORTANTE: Atualiza também o weaponMagazine/secondaryWeaponMagazine para refletir na grid
+        // Isso garante que a munição seja atualizada na grid de armamentos
+        if (isPrimary) {
+          setWeaponMagazine({ current: newCurrentAmmo, max: capacity });
+        } else {
+          setSecondaryWeaponMagazine({ current: newCurrentAmmo, max: capacity });
         }
-      } else if (currentMagazine.current > 0 && currentMagazine.current < currentMagazine.max) {
-        // Carregador parcialmente usado - cria um parcial com ID único
-        // Cada parcial tem um ID único baseado em timestamp + random para garantir unicidade
-        // É possível ter múltiplos parciais com a mesma quantidade (de carregadores diferentes)
-        const uniqueId = `${originalMagazineId}_partial_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const partialMagazine = {
-          ...currentMagazineInfo,
-          id: uniqueId,
-          quantity: 0, // NÃO conta para o total
-          loadedQuantity: 0,
-          partialAmmo: currentMagazine.current,
-        };
-        updatedInventory = [...inventory, partialMagazine];
       }
-      // Atualiza o inventário antes de continuar
-      setInventory(updatedInventory);
     }
     
-    // Se o carregador está zerado (current === 0), NÃO salva nada, apenas limpa referências
-    if (currentMagazine.current === 0 && currentMagazineInfo) {
-      // Limpa as referências do carregador zerado
+    // Se o carregador está zerado, apenas limpa referências (não remove do inventário)
+    if (currentMagazine.current === 0 && currentMagazineInfo && currentMagazineId) {
+      // O carregador permanece no inventário com estado 'empty'
+      // Apenas limpa as referências da arma
       if (isPrimary) {
         setCurrentPrimaryMagazineId(null);
         setCurrentPrimaryMagazineInfo(null);
@@ -1675,7 +1841,6 @@ function App() {
         setCurrentSecondaryMagazineId(null);
         setCurrentSecondaryMagazineInfo(null);
       }
-      // NÃO cria nada no inventário quando está vazio
     }
 
     // Compatibilidade: verifica se tem munições vinculadas
@@ -1688,8 +1853,10 @@ function App() {
       return;
     }
 
-    // Usa o inventário atualizado para buscar carregadores
-    const currentInventory = updatedInventory;
+    // IMPORTANTE: Usa o inventário atualizado que já foi atualizado acima
+    // Isso garante que o carregador atual salvo como parcial (20/30) esteja no inventário
+    // IMPORTANTE: Aguarda a atualização do estado antes de continuar
+    let currentInventory = updatedInventory;
     
     // Funções auxiliares que usam o inventário atualizado
     const getAvailableMagazinesUpdated = (weapon) => {
@@ -1707,12 +1874,10 @@ function App() {
         (item.linkedWeapon === weapon.id || !item.linkedWeapon) &&
         item.quantity > 0
       );
-      // Se tem instâncias, retorna apenas os que têm instâncias carregadas
+      // Retorna carregadores com estado 'full' (cheio)
       return compatibleMagazines.filter(item => {
-        if (item.instances && Array.isArray(item.instances)) {
-          return item.instances.some(inst => inst.isLoaded && inst.currentAmmo === parseInt(item.magazineCapacity || 30));
-        }
-        return item.loadedQuantity !== undefined ? item.loadedQuantity > 0 : false;
+        const state = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+        return state === 'full';
       });
     };
     
@@ -1731,12 +1896,10 @@ function App() {
         (item.linkedWeapon === weapon.id || !item.linkedWeapon) &&
         item.quantity > 0
       );
-      // Se tem instâncias, retorna apenas os que têm instâncias vazias
+      // Retorna carregadores com estado 'empty' (vazio)
       return compatibleMagazines.filter(item => {
-        if (item.instances && Array.isArray(item.instances)) {
-          return item.instances.some(inst => !inst.isLoaded && inst.currentAmmo === 0);
-        }
-        return item.loadedQuantity === undefined || item.loadedQuantity < item.quantity;
+        const state = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+        return state === 'empty';
       });
     };
     
@@ -1759,6 +1922,7 @@ function App() {
     let magazineToUse = null;
     let magazineCapacity = 0;
     let wasAutoFilled = false; // Flag para saber se foi preenchido automaticamente
+    let emptyMag = null; // Variável para armazenar o carregador vazio que foi preenchido
     
     // Se não há carregadores carregados, tenta encher um carregador vazio automaticamente
     if (availableMagazines.length === 0) {
@@ -1767,7 +1931,7 @@ function App() {
       
       if (availableAmmunition && emptyMagazines.length > 0) {
         // Encontra um carregador vazio compatível
-        const emptyMag = emptyMagazines[0];
+        emptyMag = emptyMagazines[0];
         const magCapacity = parseInt(emptyMag.magazineCapacity) || 30;
         const ammoNeeded = magCapacity;
         
@@ -1775,7 +1939,7 @@ function App() {
           // Enche o carregador automaticamente e já usa ele na mesma ação
           // Não precisa alterar loadedQuantity porque encheu e usou na mesma ação
           // Apenas remove a munição do inventário
-          updatedInventory = currentInventory.map(item => {
+          updatedInventory = [...currentInventory].map(item => {
             if (item.id === availableAmmunition.id) {
               // Remove a munição usada para encher o carregador
               return {
@@ -1786,7 +1950,9 @@ function App() {
             return item;
           });
           
-          setInventory(updatedInventory);
+          // Atualiza o inventário
+          setInventory([...updatedInventory]);
+          currentInventory = updatedInventory;
           
           // Usa o carregador que acabou de ser preenchido
           // Cria uma cópia do carregador para rastrear
@@ -1813,72 +1979,49 @@ function App() {
       magazineCapacity = parseInt(magazineToUse.magazineCapacity) || 30;
     }
 
-    // Atualiza o inventário: reduz a quantidade de carregadores carregados
-    // (só se não foi preenchido automaticamente, porque nesse caso já foi usado na mesma ação)
-    if (!wasAutoFilled) {
-      // Se havia carregadores carregados, apenas reduz o loadedQuantity
-      updatedInventory = currentInventory.map(item => {
-        if (item.id === magazineToUse.id) {
-          const currentLoaded = item.loadedQuantity || 0;
-          const newLoaded = Math.max(0, currentLoaded - 1);
-          const updatedItem = {
-            ...item,
-            loadedQuantity: newLoaded
-          };
-          
-          // Se não há mais carregadores carregados, mostra feedback visual
-          if (newLoaded === 0 && currentLoaded > 0) {
-            console.log(`⚠️ Todos os carregadores de ${item.name} foram usados!`);
-          }
-          
-          return updatedItem;
-        }
-        return item;
-      });
-      setInventory(updatedInventory);
-    }
+    // IMPORTANTE: O carregador permanece no inventário
+    // Não precisa ser removido, apenas será rastreado pelo ID quando estiver na arma
 
     // Recarrega a arma e rastreia qual carregador está sendo usado
+    // IMPORTANTE: Usa diretamente o ID único do carregador (não cria IDs temporários)
+    const magazineCurrentAmmo = wasAutoFilled ? magazineCapacity : (magazineToUse.currentAmmo || magazineCapacity);
+    
+    // IMPORTANTE: Atualiza o estado do carregador no inventário quando é usado
+    // Isso garante que o estado seja atualizado corretamente (full quando está cheio)
+    updatedInventory = [...currentInventory].map(item => {
+      if (item.id === magazineToUse.id) {
+        // Se foi preenchido automaticamente, usa a capacidade máxima
+        // Senão, usa a munição atual do carregador
+        const newCurrentAmmo = wasAutoFilled ? magazineCapacity : (magazineToUse.currentAmmo || magazineCapacity);
+        const newState = getMagazineState(newCurrentAmmo, magazineCapacity);
+            return {
+              ...item,
+          currentAmmo: newCurrentAmmo,
+          state: newState,
+          isLoaded: newState === 'full'
+            };
+          }
+          return item;
+        });
+    
+    // Atualiza o inventário com o estado correto do carregador
+    setInventory([...updatedInventory]);
+    currentInventory = updatedInventory;
+    
     if (isPrimary) {
-      setWeaponMagazine({ current: magazineCapacity, max: magazineCapacity });
-      // Busca a instância específica do carregador que será usado
-      const allMagazines = getAllCompatibleMagazinesForSelect(primaryWeapon, true);
-      const currentMagazineOption = allMagazines.find(m => 
-        m.originalId === magazineToUse.id && m.type === 'loaded'
-      );
-      if (currentMagazineOption) {
-        // Salva o ID da instância específica
-        setCurrentPrimaryMagazineId(currentMagazineOption.id);
+      setWeaponMagazine({ current: magazineCurrentAmmo, max: magazineCapacity });
+      // IMPORTANTE: Usa diretamente o ID único do carregador
+      setCurrentPrimaryMagazineId(magazineToUse.id);
         setCurrentPrimaryMagazineInfo(magazineToUse);
-        setSelectedPrimaryMagazine(currentMagazineOption.id);
+      setPrevPrimaryMagazine({ current: magazineCurrentAmmo, max: magazineCapacity });
+      setSelectedPrimaryMagazine(magazineToUse.id);
       } else {
-        // Fallback: cria um ID temporário se não encontrar
-        const tempId = `${magazineToUse.id}_loaded_0`;
-        setCurrentPrimaryMagazineId(tempId);
-        setCurrentPrimaryMagazineInfo(magazineToUse);
-        setSelectedPrimaryMagazine(tempId);
-      }
-      setPrevPrimaryMagazine({ current: magazineCapacity, max: magazineCapacity });
-    } else {
-      setSecondaryWeaponMagazine({ current: magazineCapacity, max: magazineCapacity });
-      // Busca a instância específica do carregador que será usado
-      const allMagazines = getAllCompatibleMagazinesForSelect(secondaryWeapon, false);
-      const currentMagazineOption = allMagazines.find(m => 
-        m.originalId === magazineToUse.id && m.type === 'loaded'
-      );
-      if (currentMagazineOption) {
-        // Salva o ID da instância específica
-        setCurrentSecondaryMagazineId(currentMagazineOption.id);
+      setSecondaryWeaponMagazine({ current: magazineCurrentAmmo, max: magazineCapacity });
+      // IMPORTANTE: Usa diretamente o ID único do carregador
+      setCurrentSecondaryMagazineId(magazineToUse.id);
         setCurrentSecondaryMagazineInfo(magazineToUse);
-        setSelectedSecondaryMagazine(currentMagazineOption.id);
-      } else {
-        // Fallback: cria um ID temporário se não encontrar
-        const tempId = `${magazineToUse.id}_loaded_0`;
-        setCurrentSecondaryMagazineId(tempId);
-        setCurrentSecondaryMagazineInfo(magazineToUse);
-        setSelectedSecondaryMagazine(tempId);
-      }
-      setPrevSecondaryMagazine({ current: magazineCapacity, max: magazineCapacity });
+      setPrevSecondaryMagazine({ current: magazineCurrentAmmo, max: magazineCapacity });
+      setSelectedSecondaryMagazine(magazineToUse.id);
     }
 
     showAlert(`Arma recarregada! ${magazineCapacity} munições no pente.`, 'success');
@@ -1979,7 +2122,8 @@ function App() {
     showAlert(`Carregador salvo no inventário com ${magazine.current} munições!`, 'success');
   };
 
-  // Função para carregar carregadores (usa munição solta para encher carregadores vazios)
+  // Função para carregar carregadores (usa munição solta para encher TODOS os carregadores vazios disponíveis)
+  // IMPORTANTE: Agora cada carregador é um item único com ID único, não há mais instâncias
   const handleLoadMagazines = (weapon) => {
     if (!weapon || weapon.weaponType !== 'fogo') {
       showAlert('Selecione uma arma de fogo primeiro!', 'warning');
@@ -1996,20 +2140,30 @@ function App() {
       return;
     }
 
-    // Busca carregadores vazios compatíveis primeiro
-    const emptyMagazines = getEmptyMagazines(weapon);
-    
-    // Busca carregadores parciais compatíveis (que também serão preenchidos)
+    // Busca munições compatíveis
     const linkedAmmunitions = inventory.filter(a => ammoIds.includes(a.id));
-    const ammunitionTypes = linkedAmmunitions
-      .map(a => a.ammunitionType)
-      .filter(Boolean);
+    const ammunitionTypes = linkedAmmunitions.map(a => a.ammunitionType).filter(Boolean);
     
-    const partialMagazines = inventory.filter(item => 
-      item.category === 'carregadores' && 
-      item.partialAmmo && 
-      ammunitionTypes.includes(item.ammunitionType)
-    );
+    if (ammunitionTypes.length === 0) {
+      showAlert('Não há tipos de munição compatíveis encontrados!', 'warning');
+      return;
+    }
+
+    // Busca TODOS os carregadores vazios compatíveis (cada um é um item único)
+    const emptyMagazines = inventory.filter(item => {
+      if (item.category !== 'carregadores') return false;
+      if (!ammunitionTypes.includes(item.ammunitionType)) return false;
+      const state = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+      return state === 'empty';
+    });
+    
+    // Busca TODOS os carregadores parciais compatíveis (para completar)
+    const partialMagazines = inventory.filter(item => {
+      if (item.category !== 'carregadores') return false;
+      if (!ammunitionTypes.includes(item.ammunitionType)) return false;
+      const state = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+      return state === 'partial';
+    });
     
     // Agrupa carregadores por tipo de munição para usar a munição correta
     const magazinesByAmmoType = {};
@@ -2022,17 +2176,11 @@ function App() {
     });
     
     // Busca munição disponível para cada tipo de carregador
-    // Verifica tanto o ammunitionType quanto o name para garantir correspondência exata
     const availableAmmunitionByType = {};
     Object.keys(magazinesByAmmoType).forEach(ammoType => {
-      const magazinesForType = magazinesByAmmoType[ammoType];
-      // Pega o nome do primeiro carregador deste tipo para comparar
-      const magazineName = magazinesForType[0]?.name;
-      
       const ammo = inventory.find(item => 
         item.category === 'municoes' && 
         item.ammunitionType === ammoType &&
-        item.name === magazineName && // Verifica se o nome corresponde exatamente
         item.quantity > 0
       );
       if (ammo) {
@@ -2050,300 +2198,174 @@ function App() {
       return;
     }
 
-    // Processa cada tipo de munição separadamente
+    // IMPORTANTE: Agora cada carregador é um item único, trabalha diretamente com eles
+    // Rastreia a munição disponível por tipo (para evitar usar mais do que temos)
+    const ammoAvailable = {};
+    Object.keys(availableAmmunitionByType).forEach(ammoType => {
+      ammoAvailable[ammoType] = availableAmmunitionByType[ammoType].quantity;
+    });
+    
     let totalMagazinesFilled = 0;
     let totalAmmunitionUsed = 0;
-    let totalPartialMagazinesFilled = 0;
     
-    // Processa cada tipo de munição
-    Object.keys(magazinesByAmmoType).forEach(ammoType => {
-      const magazinesForThisType = magazinesByAmmoType[ammoType];
-      const ammunitionForThisType = availableAmmunitionByType[ammoType];
-      
-      if (!ammunitionForThisType) return; // Não há munição para este tipo
-      
-      // Separa carregadores vazios e parciais deste tipo
-      const emptyMagsForType = magazinesForThisType.filter(mag => {
-        if (mag.instances && Array.isArray(mag.instances)) {
-          return mag.instances.some(inst => !inst.isLoaded && inst.currentAmmo === 0);
+    // Processa TODOS os carregadores vazios e parciais
+    const updatedInventory = [...inventory].map(item => {
+      // Atualiza carregadores vazios e parciais
+      if (item.category === 'carregadores' && ammunitionTypes.includes(item.ammunitionType)) {
+        const state = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+        const capacity = parseInt(item.magazineCapacity) || 30;
+        const currentAmmo = item.currentAmmo || 0;
+        const ammoType = item.ammunitionType;
+        
+        // Verifica se há munição disponível para este tipo
+        if (ammoAvailable[ammoType] === undefined || ammoAvailable[ammoType] <= 0) {
+          return item; // Não há munição disponível
         }
-        return (mag.loadedQuantity || 0) < mag.quantity;
-      });
-      
-      const partialMagsForType = magazinesForThisType.filter(mag => mag.partialAmmo);
-      
-      if (emptyMagsForType.length === 0 && partialMagsForType.length === 0) return;
-      
-      // Usa o primeiro carregador para obter a capacidade
-      const compatibleMag = emptyMagsForType.length > 0 ? emptyMagsForType[0] : partialMagsForType[0];
-      const magCapacity = parseInt(compatibleMag.magazineCapacity) || 30;
-      
-      // Calcula quantos carregadores vazios deste tipo existem
-      const totalEmptyForType = emptyMagsForType.reduce((sum, mag) => {
-        if (mag.instances && Array.isArray(mag.instances)) {
-          return sum + mag.instances.filter(inst => !inst.isLoaded && inst.currentAmmo === 0).length;
-        } else {
-          const currentLoaded = mag.loadedQuantity || 0;
-          return sum + (mag.quantity - currentLoaded);
+        
+        if (state === 'empty') {
+          // Carregador vazio - precisa de munição completa
+          if (ammoAvailable[ammoType] >= capacity) {
+            ammoAvailable[ammoType] -= capacity;
+            totalMagazinesFilled++;
+            totalAmmunitionUsed += capacity;
+            const newState = getMagazineState(capacity, capacity);
+            return {
+              ...item,
+              currentAmmo: capacity,
+              state: newState,
+              isLoaded: newState === 'full'
+            };
+          }
+        } else if (state === 'partial') {
+          // Carregador parcial - completa até encher
+          const neededAmmo = capacity - currentAmmo;
+          if (ammoAvailable[ammoType] >= neededAmmo) {
+            ammoAvailable[ammoType] -= neededAmmo;
+            totalMagazinesFilled++;
+            totalAmmunitionUsed += neededAmmo;
+            const newState = getMagazineState(capacity, capacity);
+            return {
+              ...item,
+              currentAmmo: capacity,
+              state: newState,
+              isLoaded: newState === 'full'
+            };
+          }
         }
-      }, 0);
+      }
       
-      // Calcula munição necessária para completar parciais deste tipo
-      const partialAmmoNeededForType = partialMagsForType.reduce((sum, partial) => {
-        const currentAmmo = partial.partialAmmo || 0;
-        return sum + (magCapacity - currentAmmo);
-      }, 0);
+      return item;
+    }).map(item => {
+      // Atualiza quantidade de munição baseado no que foi usado
+        if (item.category === 'municoes') {
+        const ammoType = item.ammunitionType;
+        if (availableAmmunitionByType[ammoType] && item.id === availableAmmunitionByType[ammoType].id) {
+          const originalQuantity = item.quantity;
+          const used = originalQuantity - ammoAvailable[ammoType];
+          if (used > 0) {
+            return {
+              ...item,
+              quantity: Math.max(0, originalQuantity - used)
+            };
+          }
+        }
+      }
       
-      // Calcula quantos carregadores podem ser preenchidos com a munição disponível
-      const totalAmmoNeededForType = partialAmmoNeededForType + (totalEmptyForType * magCapacity);
-      const availableAmmo = ammunitionForThisType.quantity;
-      const maxMagazinesFromAmmo = Math.floor((availableAmmo + partialMagsForType.reduce((sum, p) => sum + (p.partialAmmo || 0), 0)) / magCapacity);
-      const totalAvailableForType = totalEmptyForType + partialMagsForType.length;
-      const magazinesToFillForType = Math.min(totalAvailableForType, maxMagazinesFromAmmo);
-      
-      if (magazinesToFillForType === 0) return;
-      
-      // Calcula munição usada para este tipo
-      const partialAmmoToUseForType = Math.min(partialAmmoNeededForType, availableAmmo);
-      const emptyMagazinesToFillForType = Math.min(totalEmptyForType, Math.floor((availableAmmo - partialAmmoToUseForType) / magCapacity));
-      const ammunitionUsedForType = partialAmmoToUseForType + (emptyMagazinesToFillForType * magCapacity);
-      
-      totalMagazinesFilled += magazinesToFillForType;
-      totalAmmunitionUsed += ammunitionUsedForType;
-      totalPartialMagazinesFilled += partialMagsForType.length;
-      
-      // Atualiza o inventário para este tipo específico
-      // Isso será feito no map abaixo, mas precisamos rastrear qual munição usar para cada carregador
+      return item;
     });
     
     if (totalMagazinesFilled === 0) {
-      showAlert(`Não há munição suficiente para preencher nenhum carregador!`, 'warning');
+      showAlert('Não há munição suficiente para preencher nenhum carregador!', 'warning');
+      return;
+    }
+    
+    setInventory(updatedInventory);
+    showAlert(`${totalMagazinesFilled} carregador(es) carregado(s) com ${totalAmmunitionUsed} munições! Agora você pode recarregar sua arma.`, 'success');
+  };
+
+  // Função para carregar um carregador individual
+  // IMPORTANTE: Pode carregar mesmo que não complete o carregador, usando toda munição disponível
+  const handleLoadSingleMagazine = (magazineItem) => {
+    if (!magazineItem || magazineItem.category !== 'carregadores') {
+      showAlert('Item inválido!', 'warning');
       return;
     }
 
-    // Prepara dados para processar cada tipo
-    // Agrupa por combinação de ammunitionType + name para garantir correspondência exata
-    const processingData = {};
-    Object.keys(magazinesByAmmoType).forEach(ammoType => {
-      const magazinesForThisType = magazinesByAmmoType[ammoType];
-      
-      // Agrupa carregadores por nome também (além do tipo)
-      const magazinesByName = {};
-      magazinesForThisType.forEach(mag => {
-        const key = `${ammoType}_${mag.name}`;
-        if (!magazinesByName[key]) {
-          magazinesByName[key] = [];
-        }
-        magazinesByName[key].push(mag);
-      });
-      
-      // Processa cada combinação de tipo + nome
-      Object.keys(magazinesByName).forEach(key => {
-        const magsForName = magazinesByName[key];
-        const magazineName = magsForName[0]?.name;
-        
-        // Busca munição que corresponde exatamente ao tipo E ao nome
-        const ammunitionForThisType = inventory.find(item => 
-          item.category === 'municoes' && 
-          item.ammunitionType === ammoType &&
-          item.name === magazineName && // Verifica se o nome corresponde exatamente
-          item.quantity > 0
-        );
-        
-        if (!ammunitionForThisType) return;
-        
-        const emptyMagsForType = magsForName.filter(mag => {
-          if (mag.instances && Array.isArray(mag.instances)) {
-            return mag.instances.some(inst => !inst.isLoaded && inst.currentAmmo === 0);
-          }
-          return (mag.loadedQuantity || 0) < mag.quantity;
-        });
-        const partialMagsForType = magsForName.filter(mag => mag.partialAmmo);
-        
-        if (emptyMagsForType.length === 0 && partialMagsForType.length === 0) return;
-        
-        const compatibleMag = emptyMagsForType.length > 0 ? emptyMagsForType[0] : partialMagsForType[0];
-        const magCapacity = parseInt(compatibleMag.magazineCapacity) || 30;
-        
-        const totalEmptyForType = emptyMagsForType.reduce((sum, mag) => {
-          if (mag.instances && Array.isArray(mag.instances)) {
-            return sum + mag.instances.filter(inst => !inst.isLoaded && inst.currentAmmo === 0).length;
-          } else {
-            const currentLoaded = mag.loadedQuantity || 0;
-            return sum + (mag.quantity - currentLoaded);
-          }
-        }, 0);
-        
-        const partialAmmoNeededForType = partialMagsForType.reduce((sum, partial) => {
-          const currentAmmo = partial.partialAmmo || 0;
-          return sum + (magCapacity - currentAmmo);
-        }, 0);
-        
-        const availableAmmo = ammunitionForThisType.quantity;
-        const partialAmmoToUseForType = Math.min(partialAmmoNeededForType, availableAmmo);
-        const emptyMagazinesToFillForType = Math.min(totalEmptyForType, Math.floor((availableAmmo - partialAmmoToUseForType) / magCapacity));
-        const ammunitionUsedForType = partialAmmoToUseForType + (emptyMagazinesToFillForType * magCapacity);
-        
-        // Usa a chave combinada (tipo + nome) para identificar unicamente
-        processingData[key] = {
-          ammunition: ammunitionForThisType,
-          ammunitionUsed: ammunitionUsedForType,
-          emptyMags: emptyMagsForType,
-          partialMags: partialMagsForType,
-          capacity: magCapacity,
-          remainingToFill: emptyMagazinesToFillForType + partialMagsForType.length,
-          ammoType: ammoType,
-          magazineName: magazineName
-        };
-      });
-    });
+    const state = magazineItem.state || getMagazineState(magazineItem.currentAmmo || 0, parseInt(magazineItem.magazineCapacity || 30));
     
-    // Atualiza o inventário: marca carregadores como carregados, remove munição e remove carregadores parciais
-    const partialMagazineIds = new Set();
-    const originalMagazineMap = new Map();
-    
-    // Coleta todos os IDs de parciais
-    Object.values(processingData).forEach(data => {
-      data.partialMags.forEach(partial => {
-        partialMagazineIds.add(partial.id);
-        const originalIdMatch = partial.id.match(/^(.+?)_partial_\d+/);
-        if (originalIdMatch) {
-          const originalId = originalIdMatch[1];
-          const originalMag = inventory.find(m => m.id === originalId && m.category === 'carregadores' && !m.partialAmmo);
-          if (originalMag) {
-            originalMagazineMap.set(partial.id, originalId);
-          }
-        }
-      });
-    });
-    
-    let partialMagazinesFilled = 0;
-    
-    const updatedInventory = inventory
-      .map(item => {
-        // Atualiza munição baseada no tipo e nome
-        if (item.category === 'municoes') {
-          // Procura em todos os dados de processamento para encontrar a munição correspondente
-          const matchingData = Object.values(processingData).find(data => data.ammunition.id === item.id);
-          if (matchingData) {
-            return {
-              ...item,
-              quantity: item.quantity - matchingData.ammunitionUsed
-            };
-          }
-        }
-        
-        // Remove carregadores parciais (eles foram preenchidos e recarregados)
-        if (item.partialAmmo && partialMagazineIds.has(item.id)) {
-          partialMagazinesFilled++;
-          return null; // Remove o carregador parcial
-        }
-        
-        // Se o item tem instâncias, atualiza as instâncias individuais
-        if (item.instances && Array.isArray(item.instances) && item.category === 'carregadores') {
-          // Encontra o dado de processamento correspondente (tipo + nome)
-          const matchingKey = `${item.ammunitionType}_${item.name}`;
-          const data = processingData[matchingKey];
-          
-          if (!data) return item;
-          const isInEmptyList = data.emptyMags.some(mag => mag.id === item.id);
-          const isInPartialList = data.partialMags.some(mag => {
-            const originalIdMatch = mag.id.match(/^(.+?)_partial_\d+/);
-            if (originalIdMatch) {
-              return originalIdMatch[1] === item.id;
-            }
-            return false;
-          });
-          
-          if (!isInEmptyList && !isInPartialList) {
-            return item; // Não é um carregador que precisa ser preenchido
-          }
-          
-          const updatedInstances = [...item.instances];
-          let instancesFilled = 0;
-          let remainingForThisType = data.remainingToFill;
-          
-          // Atualiza instâncias vazias para carregadas
-          for (let i = 0; i < updatedInstances.length && remainingForThisType > 0; i++) {
-            if (!updatedInstances[i].isLoaded && updatedInstances[i].currentAmmo === 0) {
-              updatedInstances[i] = {
-                ...updatedInstances[i],
-                isLoaded: true,
-                currentAmmo: data.capacity
-              };
-              instancesFilled++;
-              remainingForThisType--;
-            }
-          }
-          
-          // Se há parciais correspondentes a este item, adiciona novas instâncias carregadas
-          const partialsForThisOriginal = Array.from(originalMagazineMap.entries())
-            .filter(([partialId, originalId]) => originalId === item.id)
-            .length;
-          
-          if (partialsForThisOriginal > 0 && remainingForThisType > 0) {
-            const toAdd = Math.min(partialsForThisOriginal, remainingForThisType);
-            for (let i = 0; i < toAdd; i++) {
-              updatedInstances.push({
-                instanceId: `${item.id}_loaded_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                isLoaded: true,
-                currentAmmo: data.capacity
-              });
-              remainingForThisType--;
-            }
-          }
-          
-          if (instancesFilled > 0 || partialsForThisOriginal > 0) {
-            return {
-              ...item,
-              instances: updatedInstances,
-              quantity: updatedInstances.length
-            };
-          }
-          
-          return item;
-        }
-        
-        // Sistema antigo (fallback): atualiza carregadores originais correspondentes aos parciais removidos
-        if (item.category === 'carregadores') {
-          const matchingKey = `${item.ammunitionType}_${item.name}`;
-          const data = processingData[matchingKey];
-          
-          if (data) {
-            const partialsForThisOriginal = Array.from(originalMagazineMap.entries())
-              .filter(([partialId, originalId]) => originalId === item.id)
-              .length;
-            
-            if (partialsForThisOriginal > 0 && data.remainingToFill > 0) {
-              const currentLoaded = item.loadedQuantity || 0;
-              const toAdd = Math.min(partialsForThisOriginal, data.remainingToFill);
-              return {
-                ...item,
-                loadedQuantity: currentLoaded + toAdd
-              };
-            }
-            
-            // Preenche carregadores vazios (sistema antigo)
-            if (data.remainingToFill > 0 && data.emptyMags.some(mag => mag.id === item.id)) {
-              const currentLoaded = item.loadedQuantity || 0;
-              const emptySlots = item.quantity - currentLoaded;
-              const toFill = Math.min(data.remainingToFill, emptySlots);
-              return {
-                ...item,
-                loadedQuantity: currentLoaded + toFill
-              };
-            }
-          }
-        }
-        
-        return item;
-      })
-      .filter(item => item !== null); // Remove os carregadores parciais (null)
-    
-    setInventory(updatedInventory);
+    // Verifica se o carregador já está cheio
+    if (state === 'full') {
+      showAlert('Este carregador já está cheio!', 'info');
+      return;
+    }
 
-    const partialMessage = partialMagazinesFilled > 0 ? ` ${partialMagazinesFilled} carregador(es) parcial(is) foram removidos e preenchidos.` : '';
-    showAlert(`${totalMagazinesFilled} carregador(es) carregado(s) com ${totalAmmunitionUsed} munições!${partialMessage} Agora você pode recarregar sua arma.`, 'success');
+    const capacity = parseInt(magazineItem.magazineCapacity) || 30;
+    const currentAmmo = magazineItem.currentAmmo || 0;
+    const ammoType = magazineItem.ammunitionType;
+
+    if (!ammoType) {
+      showAlert('Este carregador não possui tipo de munição definido!', 'warning');
+      return;
+    }
+
+    // Busca munição compatível
+    const ammunition = inventory.find(item => 
+      item.category === 'municoes' && 
+      item.ammunitionType === ammoType &&
+      item.quantity > 0
+    );
+
+    if (!ammunition || ammunition.quantity <= 0) {
+      showAlert(`Não há munição do tipo ${ammoType} disponível no inventário!`, 'warning');
+      return;
+    }
+
+    // Calcula munição necessária para completar o carregador
+    const neededAmmo = capacity - currentAmmo;
+    
+    // Usa o mínimo entre a munição necessária e a munição disponível
+    // Isso permite carregar mesmo que não complete o carregador
+    const ammoToUse = Math.min(neededAmmo, ammunition.quantity);
+    
+    if (ammoToUse <= 0) {
+      showAlert('Não há munição disponível para carregar!', 'warning');
+      return;
+    }
+
+    // Calcula nova quantidade de munição no carregador
+    const newAmmoInMagazine = currentAmmo + ammoToUse;
+    const newState = getMagazineState(newAmmoInMagazine, capacity);
+
+    // Atualiza o inventário
+    const updatedInventory = inventory.map(item => {
+      // Atualiza o carregador
+      if (item.id === magazineItem.id) {
+        return {
+          ...item,
+          currentAmmo: newAmmoInMagazine,
+          state: newState,
+          isLoaded: newState === 'full'
+        };
+      }
+      
+      // Atualiza a quantidade de munição
+      if (item.id === ammunition.id) {
+        return {
+          ...item,
+          quantity: item.quantity - ammoToUse
+        };
+      }
+      
+      return item;
+    });
+
+    setInventory(updatedInventory);
+    
+    if (ammoToUse < neededAmmo) {
+      showAlert(`Carregador carregado com ${ammoToUse} munições! (Faltam ${neededAmmo - ammoToUse} para completar)`, 'success');
+    } else {
+      showAlert(`Carregador carregado completamente com ${ammoToUse} munições!`, 'success');
+    }
   };
 
   const handleEditInventoryItem = (item) => {
@@ -2506,14 +2528,60 @@ function App() {
   }, {});
 
   // Agrupar inventário por categoria
-  const groupedInventory = inventory.reduce((groups, item) => {
+  // IMPORTANTE: useMemo garante que seja recalculado quando o inventário mudar
+  const groupedInventory = useMemo(() => {
+    return inventory.reduce((groups, item) => {
     const category = item.category;
     if (!groups[category]) {
       groups[category] = [];
     }
+      // IMPORTANTE: Para carregadores, garante que o estado está atualizado
+      if (item.category === 'carregadores') {
+        const capacity = parseInt(item.magazineCapacity) || 30;
+        const currentAmmo = item.currentAmmo !== undefined && item.currentAmmo !== null ? item.currentAmmo : 0;
+        // Recalcula o estado se necessário
+        const calculatedState = getMagazineState(currentAmmo, capacity);
+        if (!item.state || item.state !== calculatedState) {
+          // Cria um novo objeto com o estado atualizado
+          item = {
+            ...item,
+            state: calculatedState,
+            isLoaded: calculatedState === 'full'
+          };
+        }
+      }
     groups[category].push(item);
     return groups;
   }, {});
+  }, [inventory]);
+
+  // Função para ordenar as categorias de acordo com a preferência do usuário
+  const getSortedCategories = (categories) => {
+    // Pega as categorias existentes no inventário
+    const existingCategories = Object.keys(categories);
+    
+    // Ordena de acordo com a ordem definida pelo usuário
+    const sorted = [...existingCategories].sort((a, b) => {
+      const indexA = categoryOrder.indexOf(a);
+      const indexB = categoryOrder.indexOf(b);
+      
+      // Se a categoria não está na lista de ordem, coloca no final
+      if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+      if (indexA === -1) return 1;
+      if (indexB === -1) return -1;
+      
+      return indexA - indexB;
+    });
+    
+    return sorted;
+  };
+
+  // Salva a ordem das categorias no localStorage
+  useEffect(() => {
+    if (categoryOrder.length > 0) {
+      localStorage.setItem('inventoryCategoryOrder', JSON.stringify(categoryOrder));
+    }
+  }, [categoryOrder]);
 
   return (
     <div className={`app-container ${darkMode ? 'dark-mode' : ''}`}>
@@ -3820,10 +3888,9 @@ function App() {
                         value={ammunitionType}
                         onChange={(e) => {
                           setAmmunitionType(e.target.value);
-                          // Preenche automaticamente o tipo de carregador com o mesmo valor do tipo de munição
-                          if (e.target.value) {
-                            setItemName(e.target.value);
-                          }
+                          // IMPORTANTE: NÃO preenche automaticamente o nome
+                          // O usuário deve digitar o nome manualmente no campo "Tipo de Carregador"
+                          // Isso evita que o nome seja duplicado com o tipo de munição
                         }}
                         className="input"
                         required
@@ -4116,8 +4183,42 @@ function App() {
                   <p>Use a aba Cadastrar para adicionar itens!</p>
             </div>
           ) : (
-                <div className="discord-view">
-              {Object.keys(groupedInventory).map((category) => (
+                <div className="discord-view" style={{ position: 'relative' }}>
+                  {/* Botão para configurar ordem das categorias */}
+                  <button
+                    onClick={() => setShowCategoryOrderModal(true)}
+                    style={{
+                      position: 'absolute',
+                      top: '0.5rem',
+                      right: '0.5rem',
+                      padding: '0.5rem 1rem',
+                      background: darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.2)',
+                      border: `1px solid ${darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.3)'}`,
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      color: darkMode ? '#7289da' : '#5b9bd5',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      zIndex: 10,
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.target.style.background = darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.target.style.background = darkMode ? 'rgba(114, 137, 218, 0.2)' : 'rgba(91, 155, 213, 0.2)';
+                    }}
+                    title="Configurar ordem das categorias"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 6h18M7 12h10M11 18h2" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    Ordenar Categorias
+                  </button>
+              
+              {getSortedCategories(groupedInventory).map((category) => (
                     <div key={category} className="discord-section">
                       <div className="discord-section-title">
                         {category === 'armas' && (
@@ -4176,39 +4277,51 @@ function App() {
                   </div>
                       <div className="discord-attributes">
                     {groupedInventory[category].map((item) => {
-                            // Para carregadores, renderiza cada instância individualmente
+                            // Para carregadores, cada item já é um carregador individual
+                            // Não precisa mais de instâncias, cada carregador é um objeto separado
                             if (item.category === 'carregadores') {
                               const capacity = parseInt(item.magazineCapacity) || 30;
-                              let instances = [];
+                              const currentAmmo = item.currentAmmo !== undefined && item.currentAmmo !== null ? item.currentAmmo : 0;
+                              // Determina o estado usando a função helper ou o estado já salvo
+                              const state = item.state || getMagazineState(currentAmmo, capacity);
+                              const stateLabels = {
+                                'empty': 'Vazio',
+                                'full': 'Cheio',
+                                'partial': 'Parcial'
+                              };
+                              const stateColors = {
+                                'empty': '#e74c3c',
+                                'full': '#27ae60',
+                                'partial': '#f39c12'
+                              };
+                              const stateLabel = stateLabels[state] || 'Desconhecido';
+                              const stateColor = stateColors[state] || '#95a5a6';
                               
-                              if (item.instances && Array.isArray(item.instances)) {
-                                // Sistema novo: usa instâncias existentes
-                                instances = item.instances;
-                                console.log('Renderizando carregadores com instâncias:', item.name, instances.map(i => ({ currentAmmo: i.currentAmmo, isLoaded: i.isLoaded })));
-                              } else {
-                                // Sistema antigo: cria instâncias baseadas na quantidade
-                                const quantity = item.quantity || 1;
-                                for (let i = 0; i < quantity; i++) {
-                                  instances.push({
-                                    instanceId: `${item.id}_${i}`,
-                                    currentAmmo: 0 // Carregador novo começa vazio
-                                  });
-                                }
-                              }
-                              
-                              // Renderiza cada instância individualmente
-                              return instances.map((instance, instanceIndex) => (
-                                <div key={`${item.id}-${instance.instanceId || instanceIndex}`} className="discord-attribute" style={{ position: 'relative' }}>
+                              return (
+                                <div key={item.id} className="discord-attribute" style={{ position: 'relative' }}>
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%' }}>
                                       <span className="discord-attr-name" style={{ flex: 1 }}>
                                         {item.name}
                                         {item.ammunitionType && ` (${item.ammunitionType})`}
-                                        {` (${instance.currentAmmo !== undefined && instance.currentAmmo !== null ? instance.currentAmmo : 0}/${capacity} munições)`}
+                                        {` (${currentAmmo}/${capacity})`}
                                         :
                                       </span>
-                                      <div style={{ position: 'relative' }}>
-                                        <span className="discord-attr-value" style={{ userSelect: 'none' }}>
+                                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <span 
+                                          className="discord-attr-value" 
+                                          style={{ 
+                                            userSelect: 'none',
+                                            padding: '0.25rem 0.75rem',
+                                            borderRadius: '12px',
+                                            fontSize: '0.75rem',
+                                            fontWeight: '600',
+                                            background: `${stateColor}20`,
+                                            color: stateColor,
+                                            border: `1px solid ${stateColor}40`
+                                          }}
+                                        >
+                                          {stateLabel}
                                         </span>
                                       </div>
                                     </div>
@@ -4218,16 +4331,16 @@ function App() {
                                       <button
                                         onClick={() => handleEditInventoryItem(item)}
                                         style={{
-                                          padding: '0.25rem 0.5rem',
+                                          padding: '0.15rem 0.35rem',
                                           background: 'rgba(114, 137, 218, 0.2)',
                                           border: '1px solid rgba(114, 137, 218, 0.3)',
                                           borderRadius: '4px',
                                           cursor: 'pointer',
                                           color: '#7289da',
-                                          fontSize: '0.75rem',
+                                          fontSize: '0.65rem',
                                           display: 'flex',
                                           alignItems: 'center',
-                                          gap: '0.25rem',
+                                          gap: '0.15rem',
                                           transition: 'all 0.2s ease'
                                         }}
                                         onMouseEnter={(e) => {
@@ -4238,7 +4351,7 @@ function App() {
                                         }}
                                         title="Editar item"
                                       >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
@@ -4246,21 +4359,21 @@ function App() {
                                       </button>
                                       <button
                                         onClick={() => {
-                                          if (confirm('Tem certeza que deseja excluir este item?')) {
+                                          if (confirm('Tem certeza que deseja excluir este carregador?')) {
                                             handleDeleteInventoryItem(item.id);
                                           }
                                         }}
                                         style={{
-                                          padding: '0.25rem 0.5rem',
+                                          padding: '0.15rem 0.35rem',
                                           background: 'rgba(123, 31, 162, 0.2)',
                                           border: '1px solid rgba(123, 31, 162, 0.3)',
                                           borderRadius: '4px',
                                           cursor: 'pointer',
                                           color: '#ba68c8',
-                                          fontSize: '0.75rem',
+                                          fontSize: '0.65rem',
                                           display: 'flex',
                                           alignItems: 'center',
-                                          gap: '0.25rem',
+                                          gap: '0.15rem',
                                           transition: 'all 0.2s ease'
                                         }}
                                         onMouseEnter={(e) => {
@@ -4271,28 +4384,71 @@ function App() {
                                         }}
                                         title="Excluir item"
                                       >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                           <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                         </svg>
                                         Excluir
                                       </button>
-                                      {(item.linkedAmmunitions || item.linkedMagazine || item.linkedWeapon) && (
+                                      {item.category === 'carregadores' && (() => {
+                                        const magState = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+                                        const isFull = magState === 'full';
+                                        return (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleLoadSingleMagazine(item);
+                                            }}
+                                            disabled={isFull}
+                                            style={{
+                                              padding: '0.15rem 0.35rem',
+                                              background: isFull ? 'rgba(100, 100, 100, 0.2)' : 'rgba(46, 204, 113, 0.2)',
+                                              border: `1px solid ${isFull ? 'rgba(100, 100, 100, 0.3)' : 'rgba(46, 204, 113, 0.3)'}`,
+                                              borderRadius: '4px',
+                                              cursor: isFull ? 'not-allowed' : 'pointer',
+                                              color: isFull ? '#95a5a6' : '#2ecc71',
+                                              fontSize: '0.65rem',
+                                              display: 'flex',
+                                              alignItems: 'center',
+                                              gap: '0.15rem',
+                                              transition: 'all 0.2s ease',
+                                              opacity: isFull ? 0.5 : 1
+                                            }}
+                                            onMouseEnter={(e) => {
+                                              if (!isFull) {
+                                                e.target.style.background = 'rgba(46, 204, 113, 0.3)';
+                                              }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                              if (!isFull) {
+                                                e.target.style.background = 'rgba(46, 204, 113, 0.2)';
+                                              }
+                                            }}
+                                            title={isFull ? 'Carregador já está cheio' : 'Carregar carregador'}
+                                          >
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                              <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                            </svg>
+                                            Carregar
+                                          </button>
+                                        );
+                                      })()}
+                                      {(item.linkedAmmunitions || item.linkedMagazine || item.linkedWeapon) && item.category !== 'carregadores' && (
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             setShowItemInfo(showItemInfo === item.id ? null : item.id);
                                           }}
                                           style={{
-                                            padding: '0.25rem 0.5rem',
+                                            padding: '0.15rem 0.35rem',
                                             background: showItemInfo === item.id ? (darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.2)') : 'rgba(114, 137, 218, 0.2)',
                                             border: '1px solid rgba(114, 137, 218, 0.3)',
                                             borderRadius: '4px',
                                             cursor: 'pointer',
                                             color: '#7289da',
-                                            fontSize: '0.75rem',
+                                            fontSize: '0.65rem',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '0.25rem',
+                                            gap: '0.15rem',
                                             transition: 'all 0.2s ease'
                                           }}
                                           onMouseEnter={(e) => {
@@ -4307,7 +4463,7 @@ function App() {
                                           }}
                                           title="Ver informações do item"
                                         >
-                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                                             <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                                           </svg>
@@ -4316,7 +4472,7 @@ function App() {
                                       )}
                                     </div>
                                   )}
-                                  {showItemInfo === item.id && (
+                                  {showItemInfo === item.id && item.category !== 'carregadores' && (
                                     <div 
                                       style={{
                                         position: 'absolute',
@@ -4470,14 +4626,59 @@ function App() {
                                             color: darkMode ? '#dcddde' : '#2c3e50',
                                             marginTop: '0.25rem'
                                           }}>
-                                            {instance.currentAmmo || 0}/{capacity}
+                                            {item.currentAmmo !== undefined && item.currentAmmo !== null ? item.currentAmmo : 0}/{capacity}
+                                          </div>
+                                        </div>
+                                        <div>
+                                          <span style={{ 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '600', 
+                                            color: darkMode ? '#7289da' : '#5b9bd5',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.5px'
+                                          }}>
+                                            Estado:
+                                          </span>
+                                          <div style={{ 
+                                            marginTop: '0.25rem'
+                                          }}>
+                                            {(() => {
+                                              const currentAmmo = item.currentAmmo !== undefined && item.currentAmmo !== null ? item.currentAmmo : 0;
+                                              const state = item.state || getMagazineState(currentAmmo, capacity);
+                                              const stateLabels = {
+                                                'empty': 'Vazio',
+                                                'full': 'Cheio',
+                                                'partial': 'Parcial'
+                                              };
+                                              const stateColors = {
+                                                'empty': '#e74c3c',
+                                                'full': '#27ae60',
+                                                'partial': '#f39c12'
+                                              };
+                                              const stateLabel = stateLabels[state] || 'Desconhecido';
+                                              const stateColor = stateColors[state] || '#95a5a6';
+                                              return (
+                                                <span style={{
+                                                  padding: '0.25rem 0.75rem',
+                                                  borderRadius: '12px',
+                                                  fontSize: '0.85rem',
+                                                  fontWeight: '600',
+                                                  background: `${stateColor}20`,
+                                                  color: stateColor,
+                                                  border: `1px solid ${stateColor}40`,
+                                                  display: 'inline-block'
+                                                }}>
+                                                  {stateLabel}
+                                                </span>
+                                              );
+                                            })()}
                                           </div>
                                         </div>
                                       </div>
                                     </div>
                                   )}
                                 </div>
-                              ));
+                              );
                             }
                             
                             // Para outros itens (não carregadores), renderiza normalmente
@@ -4789,16 +4990,16 @@ function App() {
                                         <button
                                           onClick={() => handleEditInventoryItem(item)}
                                           style={{
-                                            padding: '0.25rem 0.5rem',
+                                            padding: '0.15rem 0.35rem',
                                             background: 'rgba(114, 137, 218, 0.2)',
                                             border: '1px solid rgba(114, 137, 218, 0.3)',
                                             borderRadius: '4px',
                                             cursor: 'pointer',
                                             color: '#7289da',
-                                            fontSize: '0.75rem',
+                                            fontSize: '0.65rem',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '0.25rem',
+                                            gap: '0.15rem',
                                             transition: 'all 0.2s ease',
                                             flex: 1
                                           }}
@@ -4810,7 +5011,7 @@ function App() {
                                           }}
                                           title="Editar item"
                                         >
-                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                           </svg>
@@ -4823,16 +5024,16 @@ function App() {
                                             }
                                           }}
                                           style={{
-                                            padding: '0.25rem 0.5rem',
+                                            padding: '0.15rem 0.35rem',
                                             background: 'rgba(123, 31, 162, 0.2)',
                                             border: '1px solid rgba(123, 31, 162, 0.3)',
                                             borderRadius: '4px',
                                             cursor: 'pointer',
                                             color: '#ba68c8',
-                                            fontSize: '0.75rem',
+                                            fontSize: '0.65rem',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '0.25rem',
+                                            gap: '0.15rem',
                                             transition: 'all 0.2s ease',
                                             flex: 1
                                           }}
@@ -4844,7 +5045,7 @@ function App() {
                                           }}
                                           title="Excluir item"
                                         >
-                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                           </svg>
                                           Excluir
@@ -4988,16 +5189,16 @@ function App() {
                             <button
                                 onClick={() => handleEditInventoryItem(item)}
                                 style={{
-                                  padding: '0.25rem 0.5rem',
+                                  padding: '0.15rem 0.35rem',
                                   background: 'rgba(114, 137, 218, 0.2)',
                                   border: '1px solid rgba(114, 137, 218, 0.3)',
                                   borderRadius: '4px',
                                   cursor: 'pointer',
                                   color: '#7289da',
-                                  fontSize: '0.75rem',
+                                  fontSize: '0.65rem',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '0.25rem',
+                                  gap: '0.15rem',
                                   transition: 'all 0.2s ease'
                                 }}
                                 onMouseEnter={(e) => {
@@ -5008,7 +5209,7 @@ function App() {
                                 }}
                                 title="Editar item"
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
@@ -5021,16 +5222,16 @@ function App() {
                                   }
                                 }}
                                 style={{
-                                  padding: '0.25rem 0.5rem',
+                                  padding: '0.15rem 0.35rem',
                                   background: 'rgba(123, 31, 162, 0.2)',
                                   border: '1px solid rgba(123, 31, 162, 0.3)',
                                   borderRadius: '4px',
                                   cursor: 'pointer',
                                   color: '#ba68c8',
-                                  fontSize: '0.75rem',
+                                  fontSize: '0.65rem',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '0.25rem',
+                                  gap: '0.15rem',
                                   transition: 'all 0.2s ease'
                                 }}
                                 onMouseEnter={(e) => {
@@ -5041,27 +5242,71 @@ function App() {
                                 }}
                                 title="Excluir item"
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                   <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                                 Excluir
                             </button>
-                            <button
+                            {item.category === 'carregadores' && (() => {
+                              const magState = item.state || getMagazineState(item.currentAmmo || 0, parseInt(item.magazineCapacity || 30));
+                              const isFull = magState === 'full';
+                              return (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleLoadSingleMagazine(item);
+                                  }}
+                                  disabled={isFull}
+                                  style={{
+                                    padding: '0.15rem 0.35rem',
+                                    background: isFull ? 'rgba(100, 100, 100, 0.2)' : 'rgba(46, 204, 113, 0.2)',
+                                    border: `1px solid ${isFull ? 'rgba(100, 100, 100, 0.3)' : 'rgba(46, 204, 113, 0.3)'}`,
+                                    borderRadius: '4px',
+                                    cursor: isFull ? 'not-allowed' : 'pointer',
+                                    color: isFull ? '#95a5a6' : '#2ecc71',
+                                    fontSize: '0.65rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.15rem',
+                                    transition: 'all 0.2s ease',
+                                    opacity: isFull ? 0.5 : 1
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isFull) {
+                                      e.target.style.background = 'rgba(46, 204, 113, 0.3)';
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isFull) {
+                                      e.target.style.background = 'rgba(46, 204, 113, 0.2)';
+                                    }
+                                  }}
+                                  title={isFull ? 'Carregador já está cheio' : 'Carregar carregador'}
+                                >
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                                  </svg>
+                                  Carregar
+                                </button>
+                              );
+                            })()}
+                            {item.category !== 'carregadores' && (
+                              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setShowItemInfo(showItemInfo === item.id ? null : item.id);
                                 }}
                                 style={{
-                                  padding: '0.25rem 0.5rem',
+                                  padding: '0.15rem 0.35rem',
                                   background: showItemInfo === item.id ? (darkMode ? 'rgba(114, 137, 218, 0.3)' : 'rgba(91, 155, 213, 0.2)') : 'rgba(114, 137, 218, 0.2)',
                                   border: '1px solid rgba(114, 137, 218, 0.3)',
                                   borderRadius: '4px',
                                   cursor: 'pointer',
                                   color: '#7289da',
-                                  fontSize: '0.75rem',
+                                  fontSize: '0.65rem',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: '0.25rem',
+                                  gap: '0.15rem',
                                   transition: 'all 0.2s ease'
                                 }}
                                 onMouseEnter={(e) => {
@@ -5076,15 +5321,16 @@ function App() {
                                 }}
                                 title="Ver informações do item"
                               >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                   <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
                                   <path d="M12 16v-4M12 8h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                                 </svg>
                                 Info
-                            </button>
+                              </button>
+                            )}
                           </div>
                             )}
-                            {showItemInfo === item.id && (
+                            {showItemInfo === item.id && item.category !== 'carregadores' && (
                               <div 
                                 style={{
                                   position: 'absolute',
@@ -5646,7 +5892,8 @@ function App() {
                             onChange={(e) => {
                               const selectedId = e.target.value;
                               if (selectedId) {
-                                const allMagazines = getAllCompatibleMagazinesForSelect(primaryWeapon, true);
+                                // IMPORTANTE: Usa o inventário atual do estado para buscar os carregadores
+                                const allMagazines = getAllCompatibleMagazinesForSelect(primaryWeapon, true, inventory);
                                 const selectedMagazine = allMagazines.find(m => m.id === selectedId);
                                 if (selectedMagazine) {
                                   handleSelectMagazine(selectedMagazine, true);
@@ -5667,7 +5914,7 @@ function App() {
                             }}
                           >
                             <option value="">Selecione um carregador...</option>
-                            {getAllCompatibleMagazinesForSelect(primaryWeapon, true).map(mag => (
+                            {getAllCompatibleMagazinesForSelect(primaryWeapon, true, inventory).map(mag => (
                               <option key={mag.id} value={mag.id}>
                                 {mag.displayName}
                               </option>
@@ -5695,17 +5942,6 @@ function App() {
                                   <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                                 </svg>
                                 Recarregar Arma
-                              </button>
-                              <button
-                                className="btn-load-magazines"
-                                onClick={() => handleLoadMagazines(primaryWeapon)}
-                                disabled={!getAvailableAmmunition(primaryWeapon) || getEmptyMagazines(primaryWeapon).length === 0}
-                                style={{ flex: 1 }}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                                Carregar Carregadores
                               </button>
                             </div>
                           </div>
@@ -5977,7 +6213,8 @@ function App() {
                             onChange={(e) => {
                               const selectedId = e.target.value;
                               if (selectedId) {
-                                const allMagazines = getAllCompatibleMagazinesForSelect(secondaryWeapon, false);
+                                // IMPORTANTE: Usa o inventário atual do estado para buscar os carregadores
+                                const allMagazines = getAllCompatibleMagazinesForSelect(secondaryWeapon, false, inventory);
                                 const selectedMagazine = allMagazines.find(m => m.id === selectedId);
                                 if (selectedMagazine) {
                                   handleSelectMagazine(selectedMagazine, false);
@@ -5998,7 +6235,7 @@ function App() {
                             }}
                           >
                             <option value="">Selecione um carregador...</option>
-                            {getAllCompatibleMagazinesForSelect(secondaryWeapon, false).map(mag => (
+                            {getAllCompatibleMagazinesForSelect(secondaryWeapon, false, inventory).map(mag => (
                               <option key={mag.id} value={mag.id}>
                                 {mag.displayName}
                               </option>
@@ -6027,17 +6264,6 @@ function App() {
                                 </svg>
                                 Recarregar Arma
                               </button>
-                              <button
-                                className="btn-load-magazines"
-                                onClick={() => handleLoadMagazines(secondaryWeapon)}
-                                disabled={!getAvailableAmmunition(secondaryWeapon) || getEmptyMagazines(secondaryWeapon).length === 0}
-                                style={{ flex: 1 }}
-                              >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                  <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                                </svg>
-                                Carregar Carregadores
-                              </button>
                             </div>
                           </div>
                         )}
@@ -6055,6 +6281,296 @@ function App() {
         type={alert.type} 
         onClose={() => setAlert({ message: null, type: 'info' })} 
       />
+      
+      {/* Modal para ordenar categorias */}
+      {showCategoryOrderModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '1rem'
+          }}
+          onClick={() => setShowCategoryOrderModal(false)}
+        >
+          <div
+            style={{
+              background: darkMode ? '#2a2c2f' : '#ffffff',
+              borderRadius: '8px',
+              padding: '1.5rem',
+              maxWidth: '500px',
+              width: '100%',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
+              paddingBottom: '1rem',
+              borderBottom: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`
+            }}>
+              <h2 style={{
+                margin: 0,
+                fontSize: '1.25rem',
+                fontWeight: '700',
+                color: darkMode ? '#dcddde' : '#2c3e50'
+              }}>
+                Ordenar Categorias
+              </h2>
+              <button
+                onClick={() => setShowCategoryOrderModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: darkMode ? '#dcddde' : '#2c3e50',
+                  padding: '0.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '4px',
+                  transition: 'background 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = 'transparent';
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  <line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+              marginBottom: '1rem'
+            }}>
+              <p style={{
+                margin: 0,
+                fontSize: '0.875rem',
+                color: darkMode ? '#b9bbbe' : '#7f8c8d',
+                marginBottom: '1rem'
+              }}>
+                Use os botões ↑ ↓ para mover as categorias para cima ou para baixo.
+              </p>
+              
+              {categoryOrder.map((category, index) => {
+                // Verifica se a categoria existe no inventário
+                const categoryExists = Object.keys(groupedInventory).includes(category);
+                
+                // Nome amigável da categoria
+                const categoryNames = {
+                  'armas': 'Armas',
+                  'armaduras': 'Armaduras',
+                  'consumiveis': 'Consumíveis',
+                  'municoes': 'Munições',
+                  'carregadores': 'Carregadores',
+                  'magicos': 'Itens Mágicos',
+                  'geral': 'Geral',
+                  'dinheiro': 'Dinheiro'
+                };
+                
+                return (
+                  <div
+                    key={category}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.75rem',
+                      background: darkMode ? (categoryExists ? '#3a3c40' : '#2a2c2f') : (categoryExists ? '#f8f9fa' : '#ffffff'),
+                      border: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
+                      borderRadius: '6px',
+                      opacity: categoryExists ? 1 : 0.6
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      flex: 1
+                    }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ color: darkMode ? '#72767d' : '#95a5a6' }}>
+                        <circle cx="9" cy="5" r="1" fill="currentColor"/>
+                        <circle cx="9" cy="12" r="1" fill="currentColor"/>
+                        <circle cx="9" cy="19" r="1" fill="currentColor"/>
+                        <circle cx="15" cy="5" r="1" fill="currentColor"/>
+                        <circle cx="15" cy="12" r="1" fill="currentColor"/>
+                        <circle cx="15" cy="19" r="1" fill="currentColor"/>
+                      </svg>
+                      <span style={{
+                        fontSize: '0.9rem',
+                        fontWeight: '500',
+                        color: darkMode ? '#dcddde' : '#2c3e50'
+                      }}>
+                        {categoryNames[category] || category}
+                      </span>
+                      {!categoryExists && (
+                        <span style={{
+                          fontSize: '0.75rem',
+                          color: darkMode ? '#72767d' : '#95a5a6',
+                          fontStyle: 'italic'
+                        }}>
+                          (sem itens)
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <button
+                        onClick={() => {
+                          if (index > 0) {
+                            const newOrder = [...categoryOrder];
+                            [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+                            setCategoryOrder(newOrder);
+                          }
+                        }}
+                        disabled={index === 0}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background: index === 0 ? (darkMode ? '#2a2c2f' : '#f8f9fa') : (darkMode ? '#404245' : '#ffffff'),
+                          border: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
+                          borderRadius: '4px',
+                          cursor: index === 0 ? 'not-allowed' : 'pointer',
+                          color: index === 0 ? (darkMode ? '#72767d' : '#bdc3c7') : (darkMode ? '#dcddde' : '#2c3e50'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                          opacity: index === 0 ? 0.5 : 1
+                        }}
+                        onMouseEnter={(e) => {
+                          if (index > 0) {
+                            e.target.style.background = darkMode ? '#4a4d52' : '#e3e8ed';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (index > 0) {
+                            e.target.style.background = darkMode ? '#404245' : '#ffffff';
+                          }
+                        }}
+                        title="Mover para cima"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M18 15l-6-6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (index < categoryOrder.length - 1) {
+                            const newOrder = [...categoryOrder];
+                            [newOrder[index], newOrder[index + 1]] = [newOrder[index + 1], newOrder[index]];
+                            setCategoryOrder(newOrder);
+                          }
+                        }}
+                        disabled={index === categoryOrder.length - 1}
+                        style={{
+                          padding: '0.25rem 0.5rem',
+                          background: index === categoryOrder.length - 1 ? (darkMode ? '#2a2c2f' : '#f8f9fa') : (darkMode ? '#404245' : '#ffffff'),
+                          border: `1px solid ${darkMode ? '#4a4d52' : '#e3e8ed'}`,
+                          borderRadius: '4px',
+                          cursor: index === categoryOrder.length - 1 ? 'not-allowed' : 'pointer',
+                          color: index === categoryOrder.length - 1 ? (darkMode ? '#72767d' : '#bdc3c7') : (darkMode ? '#dcddde' : '#2c3e50'),
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                          opacity: index === categoryOrder.length - 1 ? 0.5 : 1
+                        }}
+                        onMouseEnter={(e) => {
+                          if (index < categoryOrder.length - 1) {
+                            e.target.style.background = darkMode ? '#4a4d52' : '#e3e8ed';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (index < categoryOrder.length - 1) {
+                            e.target.style.background = darkMode ? '#404245' : '#ffffff';
+                          }
+                        }}
+                        title="Mover para baixo"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end'
+            }}>
+              <button
+                onClick={() => {
+                  // Restaura a ordem padrão
+                  setCategoryOrder(['armas', 'armaduras', 'consumiveis', 'municoes', 'carregadores', 'magicos', 'geral', 'dinheiro']);
+                }}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: darkMode ? '#404245' : '#ecf0f1',
+                  border: `1px solid ${darkMode ? '#4a4d52' : '#bdc3c7'}`,
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  color: darkMode ? '#dcddde' : '#2c3e50',
+                  fontSize: '0.875rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = darkMode ? '#4a4d52' : '#d5dbdb';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = darkMode ? '#404245' : '#ecf0f1';
+                }}
+              >
+                Restaurar Padrão
+              </button>
+              <button
+                onClick={() => setShowCategoryOrderModal(false)}
+                style={{
+                  padding: '0.5rem 1rem',
+                  background: darkMode ? '#7289da' : '#5b9bd5',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  color: '#ffffff',
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = darkMode ? '#5b6eae' : '#4a8bc2';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = darkMode ? '#7289da' : '#5b9bd5';
+                }}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
